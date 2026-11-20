@@ -2,7 +2,7 @@
 
 **Ürün kararı:** Windows 11'de tamamen yerel model, harici AI API'siz çalışma, ek model aboneliği olmadan geliştirme.
 
-Bu tablo EON v1.2.1 tasarımındaki 16 ürün kararını korur. Bulut model bağlantıları ve çevrimiçi araştırma servisleri sonraki yerel-only kararıyla kaldırılmıştır.
+Bu belge, EON'un planlanan ürün alanlarını ve sürüm hedeflerini genel teknik terimlerle açıklar. Bulut model bağlantıları ve çevrimiçi araştırma servisleri mevcut ürün kapsamı dışındadır.
 
 | # | Ürün alanı | Hedef | Bugünkü durum |
 | --- | --- | --- | --- |
@@ -20,8 +20,8 @@ Bu tablo EON v1.2.1 tasarımındaki 16 ürün kararını korur. Bulut model bağ
 | 12 | Araçlar/izinler | Araçları aç/kapat; riskli her eyleme ayrı onay | Plan |
 | 13 | Windows bildirimleri | Hatırlatma, yerel brief, tepsi ve kısayol | Plan |
 | 14 | Gizlilik | Şifreli yerel hafıza, PUBLIC/PRIVATE/SECRET, denetim | Plan |
-| 15 | Offline/performans | 16 GB RAM ve Intel iGPU'da ölçülebilir yerel çalışma | Kısmi: model adaptörü |
-| 16 | Kişisel kurulum | Tek Windows cihazı, sade kurulum, ek AI aboneliği yok | Kısmi: Python kaynak kodu |
+| 15 | Offline/performans | Farklı CPU/RAM konfigürasyonlarında ölçülebilir yerel çalışma | Kısmi: model adaptörü |
+| 16 | Kurulum ve dağıtım | Windows için sade kurulum, ek AI aboneliği yok | Kısmi: Python kaynak kodu |
 
 ## Sürüm hedefleri
 
@@ -55,5 +55,3 @@ Yerel ses tanıma/sentezi, Hey EON, EON Studio, Windows bildirimleri, yerel kayn
 ## Değişmez ilkeler
 
 Her terminal komutu ayrı onay alır. Özel dosya gizlice dışarı gönderilmez. Belirsiz ifade kesin görev kabul edilmez. Model çıktısı yürütme yetkisi değildir. Şifreleme/izin denetimi başarısızsa ilgili özellik kapanır. Araştırma raporu yalnız kullanıcı isterse dosyaya dönüştürülür.
-
-Kaynak: EON Teknik Tasarım v1.2.1 (19.11.2026); yerel-only kararına uyarlanmıştır.

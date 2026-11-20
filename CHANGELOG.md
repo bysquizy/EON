@@ -19,4 +19,4 @@ EON `MAJOR.MINOR.PATCH` sürümleme kullanır. `0.x` geliştirme aşamasıdır; 
 - Kalıcı şifreli hafıza, ses, arayüz, agent araçları ve Windows kontrolü yok.
 - EXE veya Windows yükleyici paketi üretilmiyor.
 
-[0.0.1]: https://github.com/bysquizy/EON/releases/tag/v0.0.1
+[0.0.1]: ../../releases/tag/v0.0.1

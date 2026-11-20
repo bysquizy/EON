@@ -4,7 +4,7 @@
 
 > **Mevcut sürüm: v0.0.1 — erken prototip.** Komut satırında çalışan bir yerel sohbet uygulamasıdır. Tam özellikli agent veya bitmiş Windows uygulaması **değildir**.
 
-[![CI](https://github.com/bysquizy/EON/actions/workflows/ci-release.yml/badge.svg)](https://github.com/bysquizy/EON/actions/workflows/ci-release.yml) · [Releases](https://github.com/bysquizy/EON/releases) · [Windows kurulumu](docs/SETUP_WINDOWS.md) · [Yol haritası](docs/ROADMAP.md) · [Güvenlik](SECURITY.md)
+[Releases](../../releases) · [Windows kurulumu](docs/SETUP_WINDOWS.md) · [Yol haritası](docs/ROADMAP.md) · [Güvenlik](SECURITY.md)
 
 ## EON'un temel ilkeleri
 
@@ -15,7 +15,7 @@
 | **Kontrol** | Riskli araçlar, her eylem için ayrı ve tek kullanımlık kullanıcı onayı gerektirecek. |
 | **Ek AI aboneliği yok** | Token kotası veya ücretli model servisi yok. İnternet/elektrik maliyetleri ayrı. |
 | **Şeffaf geliştirme** | Hazır ve planlanan özellikler açıkça ayrılır. |
-| **Hedef donanım** | Windows 11, Intel i5-13420H, 16 GB RAM, Intel entegre grafik. |
+| **Platform** | Windows 11; sistem gereksinimleri seçilen yerel modele ve donanıma göre değişir. |
 
 ## v0.0.1 — Şu anda çalışanlar
 
@@ -40,7 +40,7 @@
    ollama pull qwen3:4b-instruct
    ```
 
-4. Depoyu ZIP olarak indirip çıkar (veya `git clone https://github.com/bysquizy/EON.git`).
+4. GitHub'daki **Code → Download ZIP** seçeneğiyle depoyu indirip çıkar veya Git üzerinden klonla.
 5. `baslat.bat` dosyasını çalıştır veya:
 
    ```powershell
@@ -76,11 +76,13 @@ Gelecek tasarımda React/TypeScript, FastAPI, şifreli hafıza, onay yöneticisi
 
 ## Uzun vadeli vizyon
 
-EON'un **16 ürün alanı** bulunur: kişilik, seçici hafıza, görev yürütme, Windows kontrolü, EON Studio, hatırlatmalar, Prompt Köprüsü, ana arayüz, sesli asistan, araştırma, projeler, izinler, bildirimler, gizlilik, çevrimdışı performans ve kişisel kurulum. Bunlar tamamlanmış özellikler değil, **hedeflerdir**.
+EON'un **16 ürün alanı** bulunur: kişilik, seçici hafıza, görev yürütme, Windows kontrolü, EON Studio, hatırlatmalar, Prompt Köprüsü, ana arayüz, sesli asistan, araştırma, projeler, izinler, bildirimler, gizlilik, çevrimdışı performans ve kurulum/dağıtım. Bunlar tamamlanmış özellikler değil, **hedeflerdir**.
 
 Tamamen yerel karar nedeniyle canlı web araştırması ve harici AI API'leri kapsam dışıdır. Araştırma özelliği, kullanıcı tarafından içe aktarılan yerel kaynaklar üzerinde geliştirilecektir.
 
 **[16 özellik ve sürüm yol haritası](docs/ROADMAP.md)**
+
+**[Depo içerik ve gizlilik politikası](docs/CONTENT_POLICY.md)**
 
 ## Test, güvenlik ve sürümler
 
@@ -90,12 +92,11 @@ py -3 -m unittest discover -s tests -v
 
 GitHub Actions, Windows ve Linux üzerinde birim testleri çalıştırmak ve yeni `VERSION` numaraları için **GitHub Release oluşturmayı denemek** üzere yapılandırılmıştır. Yayın sonucu Releases sayfasından doğrulanır.
 
-- [Releases](https://github.com/bysquizy/EON/releases) — sürüm sayfaları
+- [Releases](../../releases) — sürüm sayfaları
 - [CHANGELOG.md](CHANGELOG.md) — değişiklik geçmişi
 - [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) — yayın kuralları
 - [SECURITY.md](SECURITY.md) — güvenlik ve eksikler
 - [docs/PRIVACY.md](docs/PRIVACY.md) — gizlilik
 
-**Lisans:** Depo şu anda Private; henüz açık kaynak lisansı seçilmedi. Model ağırlıkları depoda yer almaz.
+**Lisans:** Henüz açık kaynak lisansı seçilmedi. Model ağırlıkları depoda yer almaz.
 
-**Tasarım temeli:** *EON — Birleşik Nihai Teknik Tasarım ve Kurulum Stratejisi v1.2.1* (19.11.2026). Belgedeki eski Gemini/bulut mimarisi, sonraki **tamamen yerel ve API'siz** kararla değiştirilmiştir.
