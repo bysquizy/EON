@@ -1,9 +1,8 @@
 import json
 import unittest
-from unittest.mock import patch
 
 from eon.config import LocalSettings
-from eon.provider import LocalOllama
+from eon.provider import LocalModelError, LocalOllama
 from eon.session import VolatileSession
 from eon.tools import ToolError, calculate
 
@@ -40,6 +39,36 @@ class EonTests(unittest.TestCase):
         self.assertEqual(MockConnection.created_with[:2], ("127.0.0.1", 11434))
         self.assertEqual(MockConnection.calls[-1][1], "/api/chat")
         self.assertEqual(json.loads(MockConnection.calls[-1][2])["model"], "qwen3:4b-instruct")
+
+    def test_unapproved_ollama_endpoint_rejected(self):
+        llm = LocalOllama(LocalSettings(), connection_factory=MockConnection)
+        with self.assertRaises(LocalModelError):
+            llm._call("POST", "/api/pull", {"model": "qwen3:4b-instruct"})
+
+    def test_http_redirect_not_followed(self):
+        class RedirectResponse(MockResponse):
+            status = 302
+
+        class RedirectConnection(MockConnection):
+            def getresponse(self):
+                return RedirectResponse()
+
+        llm = LocalOllama(LocalSettings(), connection_factory=RedirectConnection)
+        with self.assertRaises(LocalModelError):
+            llm.chat([{"role": "user", "content": "merhaba"}])
+
+    def test_oversized_request_rejected(self):
+        llm = LocalOllama(LocalSettings(), connection_factory=MockConnection)
+        with self.assertRaises(LocalModelError):
+            llm.chat([{"role": "user", "content": "x" * 70000}])
+
+    def test_invalid_context_rejected(self):
+        with self.assertRaises(ValueError):
+            LocalSettings(context_tokens=100)
+
+    def test_division_by_zero_rejected(self):
+        with self.assertRaises(ToolError):
+            calculate("1/0")
 
     def test_session_only_recent_turns(self):
         s = VolatileSession(max_turns=2)
