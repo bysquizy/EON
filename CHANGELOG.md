@@ -1,22 +1,16 @@
-# Changelog
+# Değişiklikler
 
-EON `MAJOR.MINOR.PATCH` sürümleme kullanır. `0.x` geliştirme aşamasıdır; uyumluluk garantisi yoktur.
+EON'un her yeni sürümünde nelerin eklendiğini ve nelerin henüz eksik olduğunu burada paylaşıyoruz.
 
-## [0.0.1] — 2026-11-20
+## v0.0.1 · 20 Kasım 2026
 
-### Eklendi
-- Python CLI ve yerel Ollama sohbeti.
-- Qwen3 4B Instruct ve 1.7B model seçimi.
-- Türkçe EON kişiliği, geçici RAM hafızası.
-- AST/Decimal tabanlı güvenli hesaplama.
-- Loopback ve izinli Ollama API yollarıyla sınırlandırılmış istemci.
-- **13 otomatik birim ve olumsuz senaryo testi.**
-- Ayrıntılı README, vizyon, mimari, Windows kurulumu, güvenlik ve gizlilik belgeleri.
-- GitHub Actions CI ve sürüm bazlı otomatik Release iş akışı.
+**İlk prototip yayımlandı.**
 
-### Bilinen sınırlamalar
-- Gerçek Ollama sohbeti hedef Windows bilgisayarında doğrulanmadı.
-- Kalıcı şifreli hafıza, ses, arayüz, agent araçları ve Windows kontrolü yok.
-- EXE veya Windows yükleyici paketi üretilmiyor.
+- Ollama ile yerel yazılı sohbet eklendi.
+- Kısa süreli sohbet hafızası ve basit hesaplama komutu hazırlandı.
+- Yerel bağlantı sınırları ve 13 otomatik test eklendi.
+- Kurulum, güvenlik ve geliştirme planı belgelendi.
 
-[0.0.1]: ../../releases/tag/v0.0.1
+**Henüz geliştirme aşamasında:** Masaüstü arayüzü, ses, şifreli kalıcı hafıza ve Windows otomasyonu.
+
+[İlk sürümün ayrıntıları](https://github.com/bysquizy/EON/releases/tag/v0.0.1)

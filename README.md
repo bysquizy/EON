@@ -1,102 +1,56 @@
-# EON — Yerel Kişisel AI Asistanı
+# EON
 
-**EON**, Windows 11 için geliştirilen, gizliliği ve kullanıcı kontrolünü temel alan **tamamen yerel, harici AI API'siz** kişisel asistan projesidir. Hedefi yalnızca sohbet etmek değil; zamanla seçici hafıza, izinli görev yürütme, sesli iletişim, belge üretimi ve kontrollü Windows otomasyonunu tek uygulamada birleştirmektir.
+**Kendi bilgisayarında çalışan, kontrolü kullanıcıya bırakan bir AI asistanı.**
 
-> **Mevcut sürüm: v0.0.1 — erken prototip.** Komut satırında çalışan bir yerel sohbet uygulamasıdır. Tam özellikli agent veya bitmiş Windows uygulaması **değildir**.
+EON, Windows için geliştirilen yerel bir yapay zekâ asistanı projesi. Amaç; doğal bir sohbet deneyimini zamanla hafıza, görevler ve bilgisayar üzerinde yapılabilecek işlemlerle bir araya getirmek. Bunu yaparken gizlilikten ve kullanıcı kontrolünden ödün vermemek.
 
-[Releases](../../releases) · [Windows kurulumu](docs/SETUP_WINDOWS.md) · [Yol haritası](docs/ROADMAP.md) · [Güvenlik](SECURITY.md)
+Proje henüz yolun başında. Şimdilik küçük ama çalışır bir temel oluşturuluyor; yeni özellikler adım adım eklenecek.
 
-## EON'un temel ilkeleri
+## Şu anda neler yapabiliyor?
 
-| İlke | Karar |
-| --- | --- |
-| **Yerel AI** | Model bilgisayarda çalışır; Google/Gemini veya başka bulut model API'si yok. |
-| **Gizlilik** | EON kişisel verileri otomatik olarak harici servislere göndermez. |
-| **Kontrol** | Riskli araçlar, her eylem için ayrı ve tek kullanımlık kullanıcı onayı gerektirecek. |
-| **Ek AI aboneliği yok** | Token kotası veya ücretli model servisi yok. İnternet/elektrik maliyetleri ayrı. |
-| **Şeffaf geliştirme** | Hazır ve planlanan özellikler açıkça ayrılır. |
-| **Platform** | Windows 11; sistem gereksinimleri seçilen yerel modele ve donanıma göre değişir. |
+**v0.0.1**, EON'un ilk prototipi.
 
-## v0.0.1 — Şu anda çalışanlar
+- Ollama ile bilgisayarda çalışan bir model üzerinden yazılı sohbet.
+- Türkçe ve İngilizce yanıtlar.
+- Son birkaç mesajı oturum boyunca hatırlama.
+- Basit matematik işlemleri.
 
-- **Yazılı sohbet:** Yerel Ollama üzerinden `qwen3:4b-instruct` veya `qwen3:1.7b`.
-- **EON kişiliği:** Türkçe odaklı, sakin, net ve gerektiğinde İngilizce yanıt veren sistem talimatı.
-- **Geçici hafıza:** Son 6 konuşma turu RAM'de tutulur; `/temizle` ile silinir.
-- **Hesaplama:** `/hesap` ile sınırlı AST/Decimal tabanlı matematik; keyfî Python kodu çalıştırılmaz.
-- **Yerel bağlantı:** EON istemcisi yalnız `127.0.0.1:11434` ve izinli Ollama yollarını kullanır.
-- **Testler:** **13** birim ve olumsuz durum testi.
+Henüz bir masaüstü arayüzü, sesli konuşma veya Windows'u kontrol etme özelliği yok. Bunlar sonraki sürümlerin hedefi.
 
-**Henüz yok:** Sesli asistan, Hey EON, şifreli kalıcı hafıza, React arayüzü, dosya işlemleri, proje yönetimi, izin/onay altyapısı, Windows kontrolü ve otonom görevler. **Gerçek Ollama sohbeti hedef Windows bilgisayarında henüz doğrulanmadı.**
+> **Durum:** Erken geliştirme aşaması. Otomatik testler geçiyor ancak gerçek modelle Windows üzerindeki ilk kullanım testi henüz tamamlanmadı.
 
-## Hızlı başlangıç — Windows 11
+## Başlamak için
 
-**Gereksinimler:** Python 3.13 önerilir (3.10+), [Ollama for Windows](https://ollama.com/download/windows), model için yeterli disk alanı.
+Windows'ta **Python 3.10+** ve [Ollama](https://ollama.com/download/windows) gerekiyor. Ollama'nın bulut özelliklerini kapatıp yalnızca yerel adreste çalışacak şekilde ayarlanması önerilir.
 
-1. Python sürümünü `py -3 --version` ile doğrula.
-2. Windows kullanıcı ortam değişkenlerine `OLLAMA_NO_CLOUD=1` ve `OLLAMA_HOST=127.0.0.1:11434` ekle; Ollama'yı tamamen kapatıp yeniden başlat.
-3. PowerShell'de modeli indir:
-
-   ```powershell
-   ollama pull qwen3:4b-instruct
-   ```
-
-4. GitHub'daki **Code → Download ZIP** seçeneğiyle depoyu indirip çıkar veya Git üzerinden klonla.
-5. `baslat.bat` dosyasını çalıştır veya:
-
-   ```powershell
-   py -3 eon.py
-   ```
-
-Daha hafif seçenek: `ollama pull qwen3:1.7b` ve `py -3 eon.py --model qwen3:1.7b`.
-
-**[Adım adım Windows kurulumu ve sorun giderme](docs/SETUP_WINDOWS.md)**
-
-## Komutlar
-
-| Komut | İşlev |
-| --- | --- |
-| `/yardim` | Yardım |
-| `/durum` | Oturum ve model durumu |
-| `/hesap 2*(3+5)` | Sınırlı hesaplama |
-| `/temizle` | RAM'deki konuşmayı temizleme |
-| `/cikis` | Çıkış |
-
-## Mevcut mimari
-
-```mermaid
-flowchart LR
-    U["Kullanıcı"] --> CLI["Python CLI"]
-    CLI --> RAM["RAM sohbet belleği"]
-    CLI --> CALC["Sınırlı hesaplayıcı"]
-    CLI --> LOCAL["Yerel Ollama istemcisi"]
-    LOCAL --> MODEL["Ollama + Qwen3<br/>127.0.0.1:11434"]
-```
-
-Gelecek tasarımda React/TypeScript, FastAPI, şifreli hafıza, onay yöneticisi ve çevrimdışı ses motoru yer alıyor. [Mimari belgesi](docs/ARCHITECTURE.md).
-
-## Uzun vadeli vizyon
-
-EON'un **16 ürün alanı** bulunur: kişilik, seçici hafıza, görev yürütme, Windows kontrolü, EON Studio, hatırlatmalar, Prompt Köprüsü, ana arayüz, sesli asistan, araştırma, projeler, izinler, bildirimler, gizlilik, çevrimdışı performans ve kurulum/dağıtım. Bunlar tamamlanmış özellikler değil, **hedeflerdir**.
-
-Tamamen yerel karar nedeniyle canlı web araştırması ve harici AI API'leri kapsam dışıdır. Araştırma özelliği, kullanıcı tarafından içe aktarılan yerel kaynaklar üzerinde geliştirilecektir.
-
-**[16 özellik ve sürüm yol haritası](docs/ROADMAP.md)**
-
-**[Depo içerik ve gizlilik politikası](docs/CONTENT_POLICY.md)**
-
-## Test, güvenlik ve sürümler
+Önce modeli indir:
 
 ```powershell
-py -3 -m unittest discover -s tests -v
+ollama pull qwen3:4b-instruct
 ```
 
-GitHub Actions, Windows ve Linux üzerinde birim testleri çalıştırmak ve yeni `VERSION` numaraları için **GitHub Release oluşturmayı denemek** üzere yapılandırılmıştır. Yayın sonucu Releases sayfasından doğrulanır.
+Ardından projeyi indirip klasöründe çalıştır:
 
-- [Releases](../../releases) — sürüm sayfaları
-- [CHANGELOG.md](CHANGELOG.md) — değişiklik geçmişi
-- [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md) — yayın kuralları
-- [SECURITY.md](SECURITY.md) — güvenlik ve eksikler
-- [docs/PRIVACY.md](docs/PRIVACY.md) — gizlilik
+```powershell
+py -3 eon.py
+```
 
-**Lisans:** Henüz açık kaynak lisansı seçilmedi. Model ağırlıkları depoda yer almaz.
+Daha hafif bir model kullanmak da mümkün. Kurulumun tamamı ve gerekli yerel bağlantı ayarları **[Windows kurulum rehberinde](docs/SETUP_WINDOWS.md)** anlatılıyor.
 
+## Sırada ne var?
+
+EON'un sonraki adımlarında güvenli araç izinleri, düzenlenebilir yerel hafıza ve sade bir masaüstü arayüzü var. Daha ilerideyse çevrimdışı sesli konuşma, dosyalarla çalışma ve izinli Windows işlemleri hedefleniyor.
+
+Tüm planı [yol haritasında](docs/ROADMAP.md) görebilirsin.
+
+## Nasıl bir proje?
+
+EON'da temel fikir basit: **Önce güven, sonra yetenek.**
+
+AI modeli yerel çalışır; harici AI servislerine bağlanmaz. Riskli işlemler, kullanıcı açıkça izin vermeden yapılmamalıdır. Bu izin sistemi henüz geliştirilme aşamasındadır; mevcut prototip zaten dosya değiştiremez veya terminal komutu çalıştıramaz.
+
+---
+
+[**Sürümler**](https://github.com/bysquizy/EON/releases) · [**Kurulum**](docs/SETUP_WINDOWS.md) · [**Yol haritası**](docs/ROADMAP.md) · [**Güvenlik**](SECURITY.md) · [**Değişiklikler**](CHANGELOG.md)
+
+<sub>EON geliştirme aşamasındadır. Açık kaynak lisansı henüz belirlenmemiştir.</sub>

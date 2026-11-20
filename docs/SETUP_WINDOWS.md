@@ -1,70 +1,60 @@
-# EON v0.0.1 — Windows 11 kurulumu
+# Windows'ta EON'u çalıştırmak
 
-Bu rehber **yazılı sohbet prototipi** içindir; henüz EXE yükleyicisi, sesli asistan veya Windows kontrolü yoktur.
+EON v0.0.1 henüz bir EXE uygulaması değil. Şimdilik Python ve Ollama ile çalışan bir sohbet prototipi.
 
-## 1. Python
+## 1. Gerekenleri kur
 
-PowerShell'de `py -3 --version` çalıştır. Python 3.13 önerilir; kod 3.10+ hedefler. Kurulu değilse [resmî Windows Python sayfasından](https://www.python.org/downloads/windows/) Python Install Manager'ı yükle. Zaten kuruluysa yeniden kurmana gerek yok.
+- [Python](https://www.python.org/downloads/windows/) (3.10 veya üzeri; 3.13 önerilir)
+- [Ollama for Windows](https://ollama.com/download/windows)
 
-## 2. Ollama
+PowerShell'de `py -3 --version` ve `ollama --version` komutlarıyla kurulumları kontrol edebilirsin. Python zaten yüklüyse tekrar kurmana gerek yok.
 
-[Resmî Ollama for Windows](https://ollama.com/download/windows) sürümünü kur. `ollama --version` ile kontrol et.
+## 2. Ollama'yı yerel çalışacak şekilde ayarla
 
-## 3. Yerel çalışma
-
-Windows **kullanıcı ortam değişkenlerine** şunları ekle:
+Windows kullanıcı ortam değişkenlerine şu iki değeri ekle:
 
 | Değişken | Değer |
 | --- | --- |
 | `OLLAMA_NO_CLOUD` | `1` |
 | `OLLAMA_HOST` | `127.0.0.1:11434` |
 
-PowerShell alternatifi:
+İstersen PowerShell'de kullanıcı düzeyinde ayarlayabilirsin:
 
 ```powershell
 [Environment]::SetEnvironmentVariable("OLLAMA_NO_CLOUD", "1", "User")
 [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "127.0.0.1:11434", "User")
 ```
 
-**Ollama'yı sistem tepsisinden tamamen kapatıp yeniden aç.** Yeni PowerShell penceresi aç.
+Sonrasında Ollama'yı tamamen kapatıp yeniden aç.
 
-## 4. Modeli bir kez indir
+## 3. Modeli indir
 
 ```powershell
 ollama pull qwen3:4b-instruct
 ```
 
-Bu modelin indirme boyutu yaklaşık **2,5 GB**; çalışma sırasında daha fazla RAM gerekebilir. Hafif seçenek: `ollama pull qwen3:1.7b`. İlk indirme için internet gerekir.
+Daha hafif seçenek: `ollama pull qwen3:1.7b`. İlk indirme internet gerektirir.
 
-## 5. EON'u çalıştır
+## 4. EON'u başlat
 
-GitHub deposunu ZIP olarak indirip aç. `baslat.bat` dosyasına çift tıkla veya PowerShell'de depo klasöründeyken:
+Depoyu **Code → Download ZIP** üzerinden indirip aç. Klasördeki `baslat.bat` dosyasını çalıştır veya PowerShell'de:
 
 ```powershell
 py -3 eon.py
 ```
 
-Hafif model için: `py -3 eon.py --model qwen3:1.7b`.
-
-İlk deneme: `Merhaba EON` yaz. Matematik için `/hesap 2*(3+5)` kullan.
-
-## 6. Testler
+Hafif model için:
 
 ```powershell
-py -3 -m unittest discover -s tests -v
+py -3 eon.py --model qwen3:1.7b
 ```
 
-Birim testleri gerçek modeli indirmez. Testlerin geçmesi, gerçek Windows + Ollama sohbetinin doğrulandığı anlamına gelmez.
+`/yardim` komutuyla seçenekleri görebilirsin.
 
-## Sorun giderme
+## Bir sorun olursa
 
-| Sorun | Kontrol |
-| --- | --- |
-| `py` yok | Python Install Manager / PATH ve yeni terminal |
-| `ollama` yok | Ollama kurulumunu ve PATH'i kontrol et |
-| Ollama'ya bağlanılamıyor | Servis çalışıyor mu, `127.0.0.1:11434` dinliyor mu? |
-| Model bulunamadı | Seçtiğin model etiketini `ollama pull` ile indir |
-| Çok yavaş | `qwen3:1.7b` ile dene, RAM/CPU kullanımını ölç |
-| Sesli cevap yok | Ses özelliği henüz yok |
+Ollama'nın çalıştığını, indirdiğin modelin doğru olduğunu ve Python/Ollama komutlarının bulunduğunu kontrol et. Yanıtlar yavaşsa daha küçük modeli dene.
 
-İlk prototipe hassas kişisel belgeleri ve parolaları vermemeni öneriyoruz.
+Testleri çalıştırmak için: `py -3 -m unittest discover -s tests -v`.
+
+> Bu sürüm henüz gerçek Windows + Ollama sohbetiyle uçtan uca doğrulanmadı. Hassas verilerle kullanılması önerilmez.

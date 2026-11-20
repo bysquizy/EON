@@ -1,57 +1,34 @@
-# EON — 16 özellik ve sürüm yol haritası
+# Yol haritası
 
-**Ürün kararı:** Windows 11'de tamamen yerel model, harici AI API'siz çalışma, ek model aboneliği olmadan geliştirme.
+EON'un hedefi, önce güvenilir bir yerel sohbet deneyimi sunmak, ardından ihtiyaç duyulan özellikleri parça parça eklemek. Her sürümde küçük ama test edilebilir ilerlemeler yapılacak.
 
-Bu belge, EON'un planlanan ürün alanlarını ve sürüm hedeflerini genel teknik terimlerle açıklar. Bulut model bağlantıları ve çevrimiçi araştırma servisleri mevcut ürün kapsamı dışındadır.
+## Geliştirme aşamaları
 
-| # | Ürün alanı | Hedef | Bugünkü durum |
-| --- | --- | --- | --- |
-| 01 | Kişilik ve günlük bilgi | Sakin, zeki, samimi TR/EN asistan; yerel özetler | Kısmi: yazılı kişilik |
-| 02 | Seçici hafıza | Önemli tercihleri sakla, gör, düzenle, sil | Plan |
-| 03 | Görev yürütme | Adım adım izinli iş, ilerleme, durdurma, sonuç raporu | Plan |
-| 04 | Windows ve ekran | Uygulama, pencere, medya, izinli ekran kontrolü | Plan |
-| 05 | EON Studio | PDF/DOCX/XLSX/PPTX üret ve düzenle | Plan |
-| 06 | Görev ve hatırlatma | Öncelik, hatırlatma, kullanıcı tarafından tamamlama | Plan |
-| 07 | Prompt Köprüsü | Prompt hazırla/kopyala; otomatik dış gönderim yok | Plan |
-| 08 | Ana arayüz | Minimal koyu cam, buz mavisi vurgu, sohbet merkezli UI | Plan |
-| 09 | Sesli asistan | Kadın ses karakteri, TR/EN, Hey EON, söz kesme | Plan |
-| 10 | Araştırma | Yerel belgelere dayalı, kaynaklı analiz; canlı web yok | Plan |
-| 11 | Projeler/sohbetler | Ayrı projeler, sohbetler, dosyalar, özel talimatlar | Plan |
-| 12 | Araçlar/izinler | Araçları aç/kapat; riskli her eyleme ayrı onay | Plan |
-| 13 | Windows bildirimleri | Hatırlatma, yerel brief, tepsi ve kısayol | Plan |
-| 14 | Gizlilik | Şifreli yerel hafıza, PUBLIC/PRIVATE/SECRET, denetim | Plan |
-| 15 | Offline/performans | Farklı CPU/RAM konfigürasyonlarında ölçülebilir yerel çalışma | Kısmi: model adaptörü |
-| 16 | Kurulum ve dağıtım | Windows için sade kurulum, ek AI aboneliği yok | Kısmi: Python kaynak kodu |
+| Sürüm | Odak | Durum |
+| --- | --- | --- |
+| **v0.0.1** | Yerel sohbetin ilk temeli | Yayınlandı |
+| **v0.0.2** | Güvenli izin ve araç altyapısı | Planlanıyor |
+| **v0.0.3** | Düzenlenebilir, şifreli yerel hafıza | Planlanıyor |
+| **v0.1.0** | İlk sade masaüstü arayüzü | Planlanıyor |
 
-## Sürüm hedefleri
+Bu sıralama bir hedef; geliştirme sırasında değişebilir.
 
-### v0.0.1 — İlk yerel çekirdek (mevcut)
-- [x] Python CLI ve Ollama yerel istemcisi
-- [x] Türkçe sistem talimatı, geçici RAM hafızası
-- [x] Sınırlı matematik aracı ve otomatik testler
-- [ ] Hedef Windows cihazında gerçek model testi
+## Daha sonra eklemek istediklerimiz
 
-### v0.0.2 — Onay ve araç güvenliği (plan)
-- [ ] Sunucu tarafı PENDING → GRANTED → CONSUMED onay durumu
-- [ ] Süre aşımı, argüman değişikliği ve tekrar kullanım testleri
-- [ ] Yalnız izinli klasöre not yazma aracı
-- [ ] Her terminal komutu için ayrı açık onay
+**Doğal bir asistan:** Daha iyi sohbet, kişilik, Türkçe ve İngilizce sesli iletişim, “Hey EON” ve gerektiğinde kısa yanıtlar.
 
-### v0.0.3 — Şifreli hafıza (plan)
-- [ ] SQLCipher + Windows Credential Manager, Windows doğrulaması
-- [ ] Şifreleme yoksa kalıcı kayıt yok (fail-closed)
-- [ ] Görülebilir, düzenlenebilir, silinebilir hafıza
-- [ ] Hassas veri sınıflandırması ve sızıntı testleri
+**Günlük işleri kolaylaştırmak:** Görevler, hatırlatmalar, yerel bildirimler, kullanıcı onaylı Windows kontrolleri ve tekrarlanan işler.
 
-### v0.1.0 — Arayüzlü ilk MVP (plan)
-- [ ] React + TypeScript arayüzü
-- [ ] FastAPI, loopback, oturum güvenliği
-- [ ] Proje/sohbet ayrımı ve izinli araç akışı
-- [ ] Windows'ta uçtan uca test edilmiş kullanım
+**Üretmek ve araştırmak:** Dosyalardan bilgi çıkarma, kaynaklı yerel araştırma, PDF/DOCX/XLSX/PPTX hazırlama ve düzenleme (EON Studio).
 
-### Daha sonraki sürümler
-Yerel ses tanıma/sentezi, Hey EON, EON Studio, Windows bildirimleri, yerel kaynaklı araştırma ve izinli masaüstü otomasyonu. **Tarih veya teslim garantisi verilmez.**
+**Düzenli bir çalışma alanı:** Ayrı projeler ve sohbetler, seçici hafıza, dosyalar, Prompt Köprüsü, sade bir arayüz ve kolay kurulum.
 
-## Değişmez ilkeler
+**Güvenlik ve performans:** Her riskli işleme ayrı onay, şifreli saklama, veri kontrolü ve farklı bilgisayarlarda verimli çevrimdışı çalışma.
 
-Her terminal komutu ayrı onay alır. Özel dosya gizlice dışarı gönderilmez. Belirsiz ifade kesin görev kabul edilmez. Model çıktısı yürütme yetkisi değildir. Şifreleme/izin denetimi başarısızsa ilgili özellik kapanır. Araştırma raporu yalnız kullanıcı isterse dosyaya dönüştürülür.
+## Değişmeyecek üç şey
+
+- **Yerel çalışma:** Harici AI model API'leri ve ücretli model servisleri kullanılmayacak.
+- **Kullanıcı kontrolü:** Riskli bir işlem, açık izin olmadan gerçekleşmeyecek.
+- **Şeffaf ilerleme:** Planlanan özellikler, tamamlanmış gibi gösterilmeyecek.
+
+Tamamlanan değişiklikleri [CHANGELOG](../CHANGELOG.md) ve [Releases](https://github.com/bysquizy/EON/releases) üzerinden takip edebilirsin.
