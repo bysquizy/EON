@@ -1,21 +1,15 @@
 # Yol haritası
 
-EON önce sade ve güvenilir bir yerel asistan, sonra kullanıcı onayıyla daha fazla iş yapabilen bir masaüstü uygulaması olacak.
+EON küçük, güvenilir ve test edilebilir sürümler halinde gelişiyor.
 
-| Sürüm | Hedef | Durum |
+| Sürüm | Durum | Odak |
 | --- | --- | --- |
-| **v0.0.1** | Yerel sohbetin ilk prototipi | Yayınlandı |
-| **v0.0.2** | Arayüz, 6 sohbet özelliği, yerel uygulama başlatıcı | Yayınlandı; gerçek Windows testi bekleniyor |
-| **v0.0.3** | Tek kullanımlık izin altyapısı ve şifreli hafıza temeli | Plan |
-| **v0.1.0** | İlk bütünleşik Windows MVP | Plan |
+| v0.0.1 | Yayınlandı | Yerel model ve terminal sohbeti |
+| v0.0.2 | Yayınlandı | Web arayüzü, sohbet araçları ve uygulama açma |
+| **v0.0.3** | Yeni sürüm | Sohbet listeleri, kısayollar ve bağlantı düzeltmeleri |
+| v0.0.4+ | Plan | Kalıcı **şifreli** sohbet saklama ve izin altyapısı |
+| v0.1+ | Plan | Daha gelişmiş yerel arayüz ve masaüstü deneyimi |
 
-## Daha sonra
+Daha sonra çevrimdışı sesli iletişim, EON Studio, seçici hafıza ve izinli Windows otomasyonu hedefleniyor.
 
-- Yerel ve seçici, kullanıcının düzenleyebildiği hafıza
-- İzinli dosya ve masaüstü araçları
-- Türkçe/İngilizce çevrimdışı sesli iletişim ve “Hey EON”
-- EON Studio ile belge ve tablo üretimi
-- Yerel belgelerden kaynaklı araştırma, projeler ve görevler
-- Sade bildirimler ve kişiselleştirilebilir arayüz
-
-**Sabit ilkeler:** Harici AI model API'si yok. Riskli eylem için kullanıcı onayı var. Özel veriler repo içine eklenmez. Planlanan özellikler tamamlanmış gibi gösterilmez.
+**Her zaman:** Yerel AI, açık kullanıcı izni, sırların ve kişisel bilgilerin GitHub'a eklenmemesi. Planlanan işlevler hazır diye gösterilmez.

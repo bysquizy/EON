@@ -26,7 +26,7 @@
   </svg>
   <div class="window">
     <header class="topbar">
-      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.0.2</span></div>
+      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.0.3</span></div>
       <div class="top-status" id="connection"><span class="status-dot"></span><span id="connectionText">Bağlanıyor...</span></div>
     </header>
     <div class="main-layout">
@@ -35,10 +35,15 @@
         <button class="nav-button" data-view="apps" title="Uygulamalar" aria-label="Uygulamalar"><svg><use href="#i-apps"/></svg></button>
         <button class="nav-button" data-view="history" title="Geçmiş" aria-label="Geçmiş"><svg><use href="#i-history"/></svg></button>
         <button class="nav-button" data-view="settings" title="Ayarlar" aria-label="Ayarlar"><svg><use href="#i-settings"/></svg></button>
+        <button class="nav-button" id="newChatButton" type="button" title="Yeni sohbet" aria-label="Yeni sohbet"><svg><use href="#i-plus"/></svg></button>
         <div class="nav-divider"></div>
         <div class="sidebar-bottom" title="Yerel kullanım">LOCAL<span class="small-dot"></span></div>
       </nav>
       <main class="workspace">
+        <div id="serverError" class="server-alert hidden" role="alert">
+          <span><strong>Bağlantı kesildi.</strong> EON terminali kapandıysa yeniden başlatıp açılan yeni sekmeyi kullan.</span>
+          <button type="button" id="retryConnection">Yeniden bağlan</button>
+        </div>
         <section class="page chat-page active-page" id="view-chat" aria-label="Sohbet">
           <div class="planet" aria-hidden="true"></div>
           <div class="chat-top-actions" id="chatActions">
@@ -74,7 +79,7 @@
           <p class="subtle-note">Uygulamalar yalnızca <strong>Aç</strong> düğmesine bastığında başlatılır. Kaydettiğin yollar bu bilgisayarda kalır.</p>
         </section>
         <section class="page content-page" id="view-history" aria-label="Geçmiş">
-          <div class="page-heading"><div><p class="eyebrow">SOHBET</p><h2>Geçmiş</h2><p>Bu oturumdaki konuşmaların. Uygulamayı kapatınca kalıcı olarak kaydedilmez.</p></div></div>
+          <div class="page-heading"><div><p class="eyebrow">SOHBETLER</p><h2>Sohbet geçmişi</h2><p>Bir sohbete tıklayıp içeriğini açabilirsin. Şimdilik uygulama kapatılınca kaybolur.</p></div><button type="button" class="outline-button" id="newChatInHistory"><svg><use href="#i-plus"/></svg> Yeni sohbet</button></div>
           <div class="history-list" id="historyList"></div>
         </section>
         <section class="page content-page" id="view-settings" aria-label="Ayarlar">
@@ -83,7 +88,7 @@
             <div class="settings-card"><h3>Yanıt uzunluğu</h3><p>Bu oturum için cevapların ayrıntı seviyesini seç.</p><div class="segmented" id="lengthControls"><button type="button" data-style="kisa">Kısa</button><button type="button" data-style="normal">Normal</button><button type="button" data-style="detayli">Detaylı</button></div></div>
             <div class="settings-card"><h3>Yerel model</h3><p>Yalnızca Ollama'da indirilmiş modeller görüntülenir.</p><select id="settingsModelSelect" aria-label="Yerel model seç"></select><button type="button" class="inline-link" id="reloadModels">Model listesini yenile</button></div>
             <div class="settings-card"><h3>Oturum bilgisi</h3><div class="stats-grid"><div><strong id="countMessages">0</strong><span>Mesaj</span></div><div><strong id="countRetries">0</strong><span>Yenileme</span></div><div><strong id="countSummaries">0</strong><span>Özet</span></div><div><strong id="countMinutes">0</strong><span>Dakika</span></div></div></div>
-            <div class="settings-card"><h3>Gizlilik</h3><p>Sohbet geçmişi yalnızca bellekte tutulur. Uygulama yolları yerel ayar dosyasına kaydedilir. EON bulut modeli kullanmaz.</p><p class="note-small">Ollama'nın kendi kayıtları ve Windows'un sistem günlükleri bu garantinin dışında olabilir.</p></div>
+            <div class="settings-card"><h3>Gizlilik</h3><p>Ayrı sohbetler şimdilik yalnızca bellekte tutulur. Uygulama yolları yerel ayar dosyasına kaydedilir. EON bulut modeli kullanmaz.</p><p class="note-small">Ollama'nın kendi kayıtları ve Windows'un sistem günlükleri bu garantinin dışında olabilir.</p></div>
           </div>
         </section>
       </main>

@@ -1,72 +1,39 @@
-# Windows'ta EON v0.0.2
+# EON'u Windows'ta çalıştırmak
 
-EON şimdilik Python ile açılan yerel bir web arayüzüdür. Henüz `.exe` yükleyicisi yoktur.
+EON v0.0.3, Python ile çalışan yerel bir tarayıcı uygulamasıdır. Henüz `.exe` kurulum dosyası yoktur.
 
-### 1. Python ve Ollama
+### Kurulum
 
-[Python 3.10+](https://www.python.org/downloads/windows/) ve [Ollama for Windows](https://ollama.com/download/windows) kurulu olmalı. PowerShell'de sürümleri kontrol et:
+1. [Python 3.10+](https://www.python.org/downloads/windows/) ve [Ollama](https://ollama.com/download/windows) kur.
+2. Windows kullanıcı ortam değişkenlerinden `OLLAMA_NO_CLOUD=1` ve `OLLAMA_HOST=127.0.0.1:11434` değerlerini ayarla. Ollama'yı tamamen kapatıp yeniden aç.
+3. PowerShell'de `ollama pull qwen3:4b-instruct` komutunu çalıştır. Hafif model için `ollama pull qwen3:1.7b` kullanılabilir.
+4. GitHub'da **Releases → v0.0.3 → Source code (zip)** arşivini indir ve klasöre çıkar.
+5. `baslat.bat` dosyasına çift tıkla. Alternatif: klasörde `py -3 eon.py`.
 
-```powershell
-py -3 --version
-ollama --version
-```
+Terminalde `EON v0.0.3 hazır. Yerel adres: http://127.0.0.1:...` yazdığında arayüz tarayıcıda açılır. Terminali açık tut. EON'u durdurmak için **Ctrl+C**.
 
-Python zaten yüklüyse yeniden kurma. EON'un kendisi üçüncü taraf Python paketi gerektirmez.
+### “Failed to fetch” / bağlantı kesildi
 
-### 2. Ollama'yı yerel moda ayarla
+Bu ifade, tarayıcının EON'un Python sunucusuna ulaşamadığı durumlarda görülebilir. Ollama ile bağlantı hatası bundan **farklıdır**.
 
-Windows **kullanıcı ortam değişkenleri** üzerinden şunları tanımla:
+1. EON'u başlattığın **terminal penceresi hâlâ açık mı?** Kapandıysa `baslat.bat` dosyasını yeniden çalıştır.
+2. Sunucuyu tekrar başlattığında **yeni açılan tarayıcı sekmesini kullan**. EON her çalışmada farklı yerel port seçebilir; eski sekmenin adresi artık çalışmayabilir.
+3. Yeni sekmede “Yeniden bağlan” düğmesini dene. Terminalden yeni adresi görebilirsin.
+4. Tarayıcıda terminalde yazan `http://127.0.0.1:PORT/api/health` adresini aç. `{"status":"ok"...}` dönüyorsa EON sunucusu ayaktadır.
+5. EON sunucusu ayaktaysa ama model yanıt vermiyorsa `ollama list` komutuyla kurulu modeli, `ollama --version` ile Ollama'yı kontrol et. Bilgisayarda iki ayrı Ollama veya EON örneği açmamaya dikkat et.
 
-| Değişken | Değer |
-| --- | --- |
-| `OLLAMA_NO_CLOUD` | `1` |
-| `OLLAMA_HOST` | `127.0.0.1:11434` |
+Yanıt uzunluğu gibi ayarlar model yanıtını beklemeden değiştirilebilir; yavaş model çağrıları artık arayüz ayarlarını kilitlemez.
 
-PowerShell ile de ayarlanabilir:
+### Sohbetler
 
-```powershell
-[Environment]::SetEnvironmentVariable("OLLAMA_NO_CLOUD", "1", "User")
-[Environment]::SetEnvironmentVariable("OLLAMA_HOST", "127.0.0.1:11434", "User")
-```
+Soldaki **Geçmiş** simgesinden sohbetlerini listeleyebilir, seçip açabilir veya silebilirsin. **+** düğmesiyle yeni sohbet başlar. Şimdilik sohbetler yalnız RAM'de bulunur; EON kapanınca korunmaz. Kalıcı şifreli kayıt ileriki sürümlerde.
 
-**Ollama'yı tamamen kapatıp yeniden başlat.** EON, modelle yalnız `127.0.0.1:11434` adresinde iletişim kurar.
+### Programları bulma
 
-### 3. Modeli indir
+**Uygulamalar → Yeniden ara** seçeneğiyle Başlat menüsü, kayıtlı uygulamalar ve masaüstü `.lnk` kısayollarını tarat. Ayrıca OneDrive Masaüstü veya elle seçilen `.exe`/`.lnk` dosyalarını kullanabilirsin. Yalnız güvendiğin uygulamaları aç.
 
-```powershell
-ollama pull qwen3:4b-instruct
-```
+### Test
 
-Daha hafif bir seçenek için `ollama pull qwen3:1.7b` kullanılabilir. İlk indirme internet gerektirir. Daha sonra EON, yalnızca Ollama'nın kurulu yerel modellerini listeler; bulut modeli seçmez.
+`py -3 -m unittest discover -s tests -v`
 
-### 4. EON'u başlat
-
-GitHub'da **Code → Download ZIP** seçeneğini kullanıp arşivi aç. İçindeki `baslat.bat` dosyasını çalıştır veya proje klasöründe:
-
-```powershell
-py -3 eon.py
-```
-
-Tarayıcıda rastgele bir yerel port üzerinden EON açılır. Kapatmak için terminalde **Ctrl+C** yap. Varsayılan tarayıcıyı otomatik açmak istemiyorsan `py -3 eon.py --no-browser`. Terminal modu için `py -3 eon.py --cli`.
-
-### 5. Uygulama başlatıcı
-
-Soldaki **Uygulamalar** sekmesini aç. EON Windows kayıtlı uygulamalarını ve Başlat menüsündeki kısayolları arar. Bulunamayan uygulamayı seçerek **Yol → Gözat** ile `.exe` veya `.lnk` dosyasını göster; ardından kaydet ve **Aç** tuşuna bas.
-
-Uygulama yolları sistemin kullanıcıya özel `%LOCALAPPDATA%\EON\applications.json` dosyasında saklanır. Bu dosya GitHub'a gönderilmez. Yalnız güvenilir programların dosyalarını seç; bir EXE'yi başlatmak Windows'ta kod çalıştırmak anlamına gelir.
-
-### Komutlar
-
-`/gecmis`, `/yeniden`, `/model`, `/model MODEL_ADI`, `/ozet`, `/uzunluk kisa`, `/uzunluk normal`, `/uzunluk detayli`, `/istatistik`, `/temizle`, `/hesap 2*(3+5)`.
-
-### Sorun olursa
-
-- **Model bulunamadı:** Ollama'nın çalıştığından ve `ollama list` komutunda bir yerel modelin göründüğünden emin ol.
-- **Ollama'ya bağlanılamıyor:** Yerel `127.0.0.1:11434` ayarını ve Ollama'nın çalıştığını kontrol et.
-- **Uygulama bulunamadı:** Yol ekle; bazı Store uygulamaları normal `.exe` veya Başlat menüsü kısayolu sunmayabilir.
-- **Dosya seçici açılmıyor:** Tam `.exe` veya `.lnk` yolunu elle girebilirsin.
-- **Yanıt yavaş:** Daha küçük yerel model dene. Modelin boyutu ve bilgisayarın kaynakları önemlidir.
-
-Geliştirici testi: `py -3 -m unittest discover -s tests -v`.
-
-**Not:** Bu sürümde kalıcı şifreli sohbet hafızası ve sesli konuşma bulunmaz. Windows üzerinde uçtan uca gerçek model ve uygulama açma testi henüz tamamlanmamıştır.
+Birim ve sahte model testlerinin geçmesi, gerçek Windows cihazında her uygulamanın açıldığını kesinleştirmez. İlk kullanımdaki sorunları sürüm notlarında bildirebiliriz.

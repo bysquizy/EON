@@ -1,4 +1,4 @@
-/* EON v0.0.2 — same-origin client. No external APIs or analytics. */
+/* EON v0.0.3 — same-origin client. No external APIs or analytics. */
 'use strict';
 const el = id => document.getElementById(id);
 let csrfToken = '';
@@ -9,6 +9,7 @@ let busy = false;
 let editId = '';
 let isCustom = false;
 let toastTimeout = null;
+let disconnected = false;
 
 function toast(message) {
   const box = el('toast');
@@ -18,17 +19,59 @@ function toast(message) {
   toastTimeout = setTimeout(() => box.classList.add('hidden'), 4800);
 }
 
+function setConnectionLost(lost) {
+  disconnected = Boolean(lost);
+  el('serverError').classList.toggle('hidden', !disconnected);
+  el('connection').classList.toggle('connected', !disconnected && installedModels.length > 0);
+  if (disconnected) el('connectionText').textContent = 'Yerel EON sunucusuna ulaşılamıyor';
+}
+
 async function request(path, body) {
-  const options = body === undefined ? {} : {
-    method: 'POST',
+  const options = body === undefined ? {cache: 'no-store'} : {
+    method: 'POST', cache: 'no-store',
     headers: {'Content-Type': 'application/json', 'X-EON-Token': csrfToken},
     body: JSON.stringify(body)
   };
-  const response = await fetch(path, options);
+  let response;
+  try {
+    response = await fetch(path, options);
+  } catch (error) {
+    setConnectionLost(true);
+    throw new Error('EON sunucusuna ulaşılamıyor. Terminali kapattıysan EON’u yeniden başlat ve açılan yeni sekmeyi kullan.');
+  }
   let result;
-  try { result = await response.json(); } catch { throw new Error('Yerel sunucudan yanıt alınamadı.'); }
-  if (!response.ok) throw new Error(result.error || 'İşlem tamamlanamadı.');
+  try { result = await response.json(); } catch {
+    throw new Error('Yerel sunucudan okunabilir yanıt alınamadı.');
+  }
+  if (!response.ok) {
+    if (response.status === 403) {
+      setConnectionLost(true);
+      throw new Error('Oturum doğrulaması değişti. Yeniden bağlanmayı dene.');
+    }
+    throw new Error(result.error || 'İşlem tamamlanamadı.');
+  }
   return result;
+}
+
+async function reconnect() {
+  try {
+    const boot = await request('/api/bootstrap');
+    csrfToken = boot.token;
+    state = boot.state;
+    apps = boot.apps || [];
+    installedModels = boot.models.models || [];
+    renderState(state);
+    renderApps();
+    for (const id of ['modelSelect', 'settingsModelSelect']) {
+      modelOptions(el(id), installedModels, boot.models.selected);
+    }
+    setConnectionLost(false);
+    el('connectionText').textContent = boot.models.connected && installedModels.length
+      ? 'Yerel model hazır' : 'Ollama bağlantısı yok';
+    toast('EON yerel sunucusuna yeniden bağlandı.');
+  } catch (error) {
+    toast(error.message);
+  }
 }
 
 function svgIcon(id) {
@@ -59,6 +102,7 @@ function showPage(name) {
 function renderState(newState) {
   state = newState;
   renderChat();
+  renderHistory();
   renderStats();
   document.querySelectorAll('[data-style]').forEach(btn => btn.classList.toggle('selected', btn.dataset.style === state.style));
   ['modelSelect', 'settingsModelSelect'].forEach(id => {
@@ -99,24 +143,63 @@ function renderChat() {
 function renderHistory() {
   const root = el('historyList');
   root.replaceChildren();
-  const history = state?.history || [];
-  if (!history.length) {
+  const conversations = state?.conversations || [];
+  if (!conversations.length) {
     const empty = document.createElement('div');
     empty.className = 'empty-hint';
-    empty.textContent = 'Henüz bir konuşma yok. Sohbet ekranından başlayabilirsin.';
+    empty.textContent = 'Henüz bir sohbet yok.';
     root.appendChild(empty);
     return;
   }
-  history.forEach(entry => {
-    const card = document.createElement('div');
-    card.className = 'history-entry';
-    const label = document.createElement('small');
-    label.textContent = entry.role === 'user' ? 'SEN' : 'EON';
-    const content = document.createElement('div');
-    content.textContent = entry.content;
-    card.append(label, content);
-    root.appendChild(card);
+  conversations.forEach(chat => {
+    const row = document.createElement('div');
+    row.className = 'conversation-row' + (chat.id === state.active_chat_id ? ' active-chat' : '');
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'conversation-open';
+    const name = document.createElement('strong');
+    name.textContent = chat.title;
+    const meta = document.createElement('small');
+    meta.textContent = chat.message_count ? chat.message_count + ' mesaj' : 'Boş sohbet';
+    open.append(name, meta);
+    open.addEventListener('click', () => openChat(chat.id));
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'conversation-delete';
+    remove.textContent = 'Sil';
+    remove.setAttribute('aria-label', chat.title + ' sohbetini sil');
+    remove.addEventListener('click', () => deleteChat(chat.id));
+    row.append(open, remove);
+    root.appendChild(row);
   });
+}
+
+async function newChat() {
+  if (busy) return toast('Önce mevcut yanıt tamamlansın.');
+  try {
+    renderState(await request('/api/chats/new', {}));
+    el('summaryPanel').classList.add('hidden');
+    showPage('chat');
+  } catch (error) { toast(error.message); }
+}
+
+async function openChat(id) {
+  if (busy) return toast('Önce mevcut yanıt tamamlansın.');
+  try {
+    renderState(await request('/api/chats/open', {id}));
+    el('summaryPanel').classList.add('hidden');
+    showPage('chat');
+  } catch (error) { toast(error.message); }
+}
+
+async function deleteChat(id) {
+  if (busy) return toast('Önce mevcut yanıt tamamlansın.');
+  if (!confirm('Bu sohbeti silmek istiyor musun?')) return;
+  try {
+    renderState(await request('/api/chats/delete', {id}));
+    el('summaryPanel').classList.add('hidden');
+    renderHistory();
+  } catch (error) { toast(error.message); }
 }
 
 function renderStats() {
@@ -171,27 +254,56 @@ async function changeModel(name) {
   }
 }
 
+function showPendingMessage(text) {
+  const log = el('chatLog');
+  el('welcome').classList.add('hidden');
+  const user = document.createElement('div');
+  user.className = 'msg user';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+  user.appendChild(bubble);
+  const assistant = document.createElement('div');
+  assistant.className = 'msg assistant pending-answer';
+  const status = document.createElement('div');
+  status.className = 'bubble';
+  status.textContent = 'EON yanıt hazırlıyor…';
+  assistant.appendChild(status);
+  log.append(user, assistant);
+  log.scrollTop = log.scrollHeight;
+  return status;
+}
+
 async function send() {
   const input = el('messageInput');
   const text = input.value.trim();
   if (!text || busy) return;
+  const isCommand = text.startsWith('/');
+  // Clear immediately, not after a slow local model call.
+  input.value = '';
+  const status = isCommand ? null : showPendingMessage(text);
   setBusy(true, 'EON yanıt hazırlıyor...');
   try {
     const result = await request('/api/message', {text});
-    input.value = '';
     renderState(result.state);
-    if (text.startsWith('/')) {
+    if (isCommand) {
       if (result.summary) showSummary(result.summary);
       else if (text.startsWith('/gecmis') || text.startsWith('/geçmiş')) showPage('history');
       else if (text.startsWith('/istatistik') || text.startsWith('/durum')) showPage('settings');
-      else if (text.startsWith('/yeniden')) showPage('chat');
+      else if (text.startsWith('/yeniden') || text.startsWith('/yenisohbet')) showPage('chat');
       else toast(result.message);
     }
   } catch (error) {
+    // A transport failure does not mean the server did not receive the message.
+    // Preserve it visually, without claiming it was successfully sent.
+    if (status) {
+      status.textContent = 'Yanıt alınamadı. Bağlantıyı kontrol et. Mesajın işlenip işlenmediği belirsiz; tekrar göndermeden önce kontrol et.';
+      status.parentElement.classList.add('failed-answer');
+    }
+    if (!input.value) input.value = text;
     toast(error.message);
   } finally {
     setBusy(false);
-    renderChat();
     input.focus();
   }
 }
@@ -338,6 +450,9 @@ function wireEvents() {
     el('messageInput').focus();
   }));
   el('sendButton').addEventListener('click', send);
+  el('newChatButton').addEventListener('click', newChat);
+  el('newChatInHistory').addEventListener('click', newChat);
+  el('retryConnection').addEventListener('click', reconnect);
   el('messageInput').addEventListener('keydown', event => {
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
@@ -377,6 +492,7 @@ async function initialize() {
     installedModels = boot.models.models || [];
     for (const id of ['modelSelect','settingsModelSelect']) modelOptions(el(id), installedModels, boot.models.selected);
     el('connection').classList.toggle('connected', Boolean(boot.models.connected && installedModels.length));
+    setConnectionLost(false);
     el('connectionText').textContent = !boot.models.connected ? 'Ollama bağlantısı yok' : installedModels.length ? 'Yerel model hazır' : 'Yerel model bulunamadı';
   } catch (error) { toast('EON yerel sunucusu hazır değil: ' + error.message); }
 }

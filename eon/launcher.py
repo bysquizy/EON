@@ -57,6 +57,40 @@ def safe_launch_path(value: str, *, windows: bool = True) -> str:
     return str(Path(path).resolve(strict=True))
 
 
+def shortcut_search_directories(environ=None) -> list[Path]:
+    """Windows Start Menu and Desktop shortcut locations (local only)."""
+    env = environ if environ is not None else os.environ
+    directories = []
+    if env.get("APPDATA"):
+        directories.append(Path(env["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs")
+    if env.get("PROGRAMDATA"):
+        directories.append(Path(env["PROGRAMDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs")
+        directories.append(Path(env["PROGRAMDATA"]).parent / "Public" / "Desktop")
+    if env.get("USERPROFILE"):
+        directories.append(Path(env["USERPROFILE"]) / "Desktop")
+    if env.get("PUBLIC"):
+        directories.append(Path(env["PUBLIC"]) / "Desktop")
+    for key in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial"):
+        if env.get(key):
+            directories.append(Path(env[key]) / "Desktop")
+    # Windows allows Desktop to be moved. Read the configured path, if present.
+    if sys.platform == "win32" and environ is None:
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as k:
+                value, _ = winreg.QueryValueEx(k, "Desktop")
+                if isinstance(value, str):
+                    directories.append(Path(os.path.expandvars(value)))
+        except (OSError, ImportError):
+            pass
+    unique = []
+    for directory in directories:
+        if directory not in unique:
+            unique.append(directory)
+    return unique
+
+
 class ApplicationRegistry:
     def __init__(self, config_path: Path | None = None, *, platform: str | None = None,
                  start_process: Callable[..., object] | None = None):
@@ -121,18 +155,13 @@ class ApplicationRegistry:
                         break
         except ImportError:
             pass
-        dirs = []
-        appdata = os.environ.get("APPDATA")
-        programdata = os.environ.get("PROGRAMDATA")
-        if appdata:
-            dirs.append(Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs")
-        if programdata:
-            dirs.append(Path(programdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs")
+        dirs = shortcut_search_directories()
         seen = 0
         for directory in dirs:
             if not directory.is_dir():
                 continue
-            for root, _, filenames in os.walk(directory, followlinks=False):
+            for root, subdirs, filenames in os.walk(directory, followlinks=False):
+                subdirs[:] = [name for name in subdirs if not Path(root, name).is_symlink()]
                 for filename in sorted(filenames):
                     seen += 1
                     if seen > 6000:

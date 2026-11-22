@@ -75,6 +75,8 @@ class EonHandler(BaseHTTPRequestHandler):
             return self._json(200, {"token": self.server.token, "state": self.server.service.snapshot(),
                                     "models": self.server.service.models(),
                                     "apps": self.server.service.launcher.list_apps()})
+        if path == "/api/health":
+            return self._json(200, {"status": "ok", "version": "0.0.3"})
         if path == "/api/state":
             return self._json(200, self.server.service.snapshot())
         if path == "/api/models":
@@ -110,6 +112,12 @@ class EonHandler(BaseHTTPRequestHandler):
                 result = service.send(payload.get("text", ""))
             elif route == "/api/regenerate":
                 result = service.regenerate()
+            elif route == "/api/chats/new":
+                result = service.new_chat()
+            elif route == "/api/chats/open":
+                result = service.open_chat(payload.get("id", ""))
+            elif route == "/api/chats/delete":
+                result = service.delete_chat(payload.get("id", ""))
             elif route == "/api/summary":
                 result = service.summary()
             elif route == "/api/model":

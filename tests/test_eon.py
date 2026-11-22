@@ -12,7 +12,7 @@ from eon.provider import LocalModelError, LocalOllama
 from eon.session import VolatileSession
 from eon.service import EonService
 from eon.tools import ToolError, calculate
-from eon.launcher import ApplicationRegistry, LaunchError, safe_launch_path
+from eon.launcher import ApplicationRegistry, LaunchError, safe_launch_path, shortcut_search_directories
 from eon.server import start_server
 
 
@@ -156,6 +156,54 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(r['message'], 'EON yanıtı')
         self.assertEqual(len(self.s.snapshot()['history']), 2)
 
+
+    def test_chat_collection_create_open_delete(self):
+        self.s.send('İlk konuşmam')
+        first_id = self.s.snapshot()['active_chat_id']
+        self.assertEqual(self.s.snapshot()['conversations'][0]['title'], 'İlk konuşmam')
+        other = self.s.new_chat()['active_chat_id']
+        self.assertNotEqual(other, first_id)
+        self.assertEqual(self.s.snapshot()['history'], [])
+        self.s.send('İkinci konuşmam')
+        self.assertEqual(len(self.s.snapshot()['conversations']), 2)
+        self.s.open_chat(first_id)
+        self.assertEqual(self.s.snapshot()['history'][0]['content'], 'İlk konuşmam')
+        self.s.delete_chat(first_id)
+        self.assertEqual(self.s.snapshot()['active_chat_id'], other)
+        self.assertEqual(self.s.snapshot()['history'][0]['content'], 'İkinci konuşmam')
+
+    def test_invalid_chat_id_denied(self):
+        with self.assertRaises(ValueError): self.s.open_chat('../../other')
+        with self.assertRaises(ValueError): self.s.delete_chat('missing-id')
+
+    def test_chat_collection_in_memory_only(self):
+        self.s.send('İçerik bilgisayara yazılmamalı')
+        # App launcher settings are the only persisted configuration at this stage.
+        self.assertFalse((Path(self.temp.name)/'chats.json').exists())
+        self.assertFalse((Path(self.temp.name)/'chats.db').exists())
+
+    def test_settings_are_responsive_during_slow_model(self):
+        started = threading.Event()
+        release = threading.Event()
+        class SlowProvider(FakeProvider):
+            def chat(self, messages):
+                started.set()
+                release.wait(timeout=5)
+                return 'Yanıt'
+        self.s.provider_factory = SlowProvider
+        thread = threading.Thread(target=lambda: self.s.send('Uzun model isteği'))
+        thread.start()
+        try:
+            self.assertTrue(started.wait(2))
+            import time
+            t0 = time.monotonic()
+            self.s.select_length('kisa')
+            self.assertLess(time.monotonic()-t0, 1.0)
+        finally:
+            release.set()
+            thread.join(timeout=3)
+        self.assertFalse(thread.is_alive())
+
     def test_regenerate_does_not_add_pair(self):
         self.s.send('merhaba')
         FakeProvider.response = 'Yeni yanıt'
@@ -223,6 +271,34 @@ class ServiceTests(unittest.TestCase):
 
 
 class LauncherTests(unittest.TestCase):
+
+    def test_desktop_shortcut_directories(self):
+        env = {'USERPROFILE': r'Z:\ExampleProfile',
+               'PUBLIC': r'Z:\ExamplePublic',
+               'OneDrive': r'C:\OneDrive',
+               'APPDATA': r'Z:\ExampleProfile\AppData\Roaming'}
+        places = [str(x) for x in shortcut_search_directories(env)]
+        self.assertTrue(any('Desktop' in place for place in places))
+        self.assertTrue(any('OneDrive' in place for place in places))
+        self.assertTrue(any('Start Menu' in place for place in places))
+        self.assertEqual(len(places), len(set(places)))
+
+    def test_desktop_shortcuts_are_detected(self):
+        with tempfile.TemporaryDirectory() as d:
+            desktop = Path(d) / 'Desktop'
+            desktop.mkdir()
+            (desktop / 'Notion.lnk').write_bytes(b'test-shortcut-placeholder')
+            (desktop / 'Antigravity.lnk').write_bytes(b'test-shortcut-placeholder')
+            (desktop / 'SOLIDWORKS.lnk').write_bytes(b'test-shortcut-placeholder')
+            with patch('eon.launcher.shortcut_search_directories', return_value=[desktop]), \
+                 patch('eon.launcher.safe_launch_path', side_effect=lambda path: path):
+                registry = ApplicationRegistry(config_path=Path(d)/'apps.json', platform='win32')
+            found = {entry['id']: entry for entry in registry.list_apps()}
+            self.assertTrue(found['notion']['ready'])
+            self.assertTrue(found['antigravity']['ready'])
+            self.assertTrue(found['solidworks']['ready'])
+            self.assertEqual(found['notion']['source'], 'found')
+
     def test_refuses_url_and_shell(self):
         for path in ('https://example.org/abc.exe', 'cmd /c calc.exe', r'\\server\share\x.exe',
                      r'C:\fake\run.bat', r'C:\fake\script.ps1'):
@@ -231,7 +307,8 @@ class LauncherTests(unittest.TestCase):
 
     def test_unconfigured_launch_denied(self):
         with tempfile.TemporaryDirectory() as d:
-            # Keep CI independent of installed Start Menu applications.
+            # Isolate this test from real Start Menu / App Paths discovery.
+            # Without this mock, a CI runner with Chrome installed could open it.
             with patch.object(ApplicationRegistry, 'refresh', return_value=None):
                 apps = ApplicationRegistry(config_path=Path(d)/'apps.json', platform='win32')
             apps._discovered.clear()
@@ -295,7 +372,7 @@ class HttpTests(unittest.TestCase):
         with self.fetch('/api/bootstrap') as response:
             data = json.loads(response.read())
             self.assertEqual(len(data['token']) > 20, True)
-            self.assertEqual(data['state']['version'], '0.0.2')
+            self.assertEqual(data['state']['version'], '0.0.3')
             self.assertIn("connect-src 'self'", response.headers['Content-Security-Policy'])
 
     def test_html_rendered(self):
@@ -321,6 +398,26 @@ class HttpTests(unittest.TestCase):
         with self.fetch('/api/message', {'text': 'Merhaba'}, origin=self.server.origin, token=token) as res:
             result = json.loads(res.read())
             self.assertEqual(result['message'], 'EON yanıtı')
+
+
+    def test_chat_actions_and_health(self):
+        token = json.loads(self.fetch('/api/bootstrap').read())['token']
+        with self.fetch('/api/health') as response:
+            self.assertEqual(json.loads(response.read())['status'], 'ok')
+        def post(route, data):
+            return json.loads(self.fetch(route, data, origin=self.server.origin, token=token).read())
+        first = post('/api/chats/new', {})
+        first_id = first['active_chat_id']
+        post('/api/message', {'text': 'Birinci sohbet'})
+        second = post('/api/chats/new', {})
+        self.assertNotEqual(first_id, second['active_chat_id'])
+        reopened = post('/api/chats/open', {'id': first_id})
+        self.assertEqual(reopened['history'][0]['content'], 'Birinci sohbet')
+        deleted = post('/api/chats/delete', {'id': first_id})
+        self.assertNotEqual(deleted['active_chat_id'], first_id)
+        with self.assertRaises(HTTPError) as ex:
+            post('/api/chats/open', {'id': 'bad-id'})
+        self.assertEqual(ex.exception.code, 400)
 
     def test_no_arbitrary_command_route(self):
         token = json.loads(self.fetch('/api/bootstrap').read())['token']

@@ -47,3 +47,55 @@ class VolatileSession:
 
     def clear(self) -> None:
         self._history.clear()
+
+
+class ConversationCollection:
+    """Multiple titled chats in memory only; no unencrypted disk history."""
+
+    def __init__(self, max_chats: int = 40):
+        import secrets
+        self.max_chats = max_chats
+        self._items = {}
+        self.active_id = ""
+        self.new()
+
+    def new(self) -> str:
+        import secrets
+        if len(self._items) >= self.max_chats:
+            raise ValueError("Sohbet sınırına ulaşıldı. Kullanılmayan bir sohbeti sil.")
+        ident = secrets.token_urlsafe(9)
+        self._items[ident] = {"title": "Yeni sohbet", "session": VolatileSession()}
+        self.active_id = ident
+        return ident
+
+    def current(self) -> VolatileSession:
+        return self._items[self.active_id]["session"]
+
+    def rename_from_first_message(self, ident: str, text: str) -> None:
+        item = self._items[ident]
+        if item["title"] == "Yeni sohbet":
+            item["title"] = text.strip().replace("\n", " ")[:55] or "Yeni sohbet"
+
+    def list(self) -> list[dict]:
+        return [
+            {"id": ident, "title": item["title"],
+             "message_count": len(item["session"].history()) // 2}
+            for ident, item in reversed(list(self._items.items()))
+        ]
+
+    def open(self, ident: str) -> None:
+        if not isinstance(ident, str) or ident not in self._items:
+            raise ValueError("Sohbet bulunamadı.")
+        self.active_id = ident
+
+    def delete(self, ident: str) -> None:
+        if not isinstance(ident, str) or ident not in self._items:
+            raise ValueError("Sohbet bulunamadı.")
+        del self._items[ident]
+        if not self._items:
+            self.new()
+        elif self.active_id == ident:
+            self.active_id = next(reversed(self._items))
+
+    def clear_current(self) -> None:
+        self.current().clear()

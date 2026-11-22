@@ -1,17 +1,20 @@
 # Değişiklikler
 
-## v0.0.2 · 22 Kasım 2026
+## v0.0.3
 
-- Sade, karanlık temalı yerel web arayüzü eklendi.
-- Geçmiş, son cevabı yenileme, kurulu modeli değiştirme, sohbet özeti, yanıt uzunluğu ve oturum istatistikleri eklendi.
-- Windows uygulama başlatıcı eklendi: altı hazır uygulama, yerel yol arama, elle yol kaydetme ve kullanıcı tıklamasıyla açma.
-- Sohbet geçmişi yalnız RAM'de, uygulama yolları ise yerel kullanıcı ayar dosyasında tutuluyor.
-- Model istemcisi ve web arayüzü loopback, origin ve oturum token kontrolüyle sınırlandırıldı.
-- Birim, API ve olumsuz senaryo testleri genişletildi.
+- Mesaj gönderildiğinde giriş alanını hemen boşaltma ve bekleme durumu.
+- Ayrı sohbetler, geçmişten açma ve silme.
+- Masaüstü ve OneDrive Masaüstü kısayollarını bulma.
+- Uzun model yanıtları sırasında ayarlara erişimin iyileştirilmesi.
+- Bağlantı sorunu ve yeniden bağlanma ekranı.
+- Güncel kurulum ve sorun giderme rehberi.
 
-**Sınır:** Gerçek Windows cihazında Ollama ve uygulama başlatma uçtan uca henüz doğrulanmadı. EXE yükleyicisi, ses ve şifreli kalıcı sohbet hafızası bulunmuyor.
+## v0.0.2
 
-## v0.0.1 · 20 Kasım 2026
+- Yerel web arayüzü, model ve yanıt modu seçimi.
+- Sohbet özeti, yeniden üretme ve oturum istatistikleri.
+- Windows uygulama başlatıcı ve elle uygulama yolu ekleme.
 
-- İlk yerel Ollama sohbet prototipi, kısa süreli sohbet belleği ve hesaplama komutu.
-- İlk güvenlik testleri ve kurulum belgeleri.
+## v0.0.1
+
+- Python CLI, yerel Ollama sohbeti ve basit hesaplama.
