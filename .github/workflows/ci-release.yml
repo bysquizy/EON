@@ -37,7 +37,7 @@ jobs:
         run: python scripts/check_repo_privacy.py
       - name: Validate frontend JavaScript syntax
         shell: bash
-        run: node --check eon/ui/app.js
+        run: node --check eon/ui/app.js && node --check eon/ui/chat.js
 
   release:
     name: Publish GitHub Release

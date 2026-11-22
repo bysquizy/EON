@@ -98,6 +98,7 @@ class ApplicationRegistry:
         self.platform = platform or sys.platform
         self._start_process = start_process or subprocess.Popen
         self._lock = threading.RLock()
+        self._hidden = set()
         self._custom = self._load()
         self._discovered: dict[str, str] = {}
         if self.platform == "win32":
@@ -106,6 +107,11 @@ class ApplicationRegistry:
     def _load(self) -> dict[str, dict[str, str]]:
         try:
             data = json.loads(self.config_path.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return {}
+            hidden = data.get("hidden", [])
+            if isinstance(hidden, list):
+                self._hidden = {key for key in hidden if isinstance(key, str) and key in PRESETS}
             items = data.get("applications", {})
             if not isinstance(items, dict):
                 return {}
@@ -123,7 +129,7 @@ class ApplicationRegistry:
         fd, tmp_path = tempfile.mkstemp(prefix="eon-", suffix=".tmp", dir=self.config_path.parent)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump({"version": 1, "applications": self._custom}, handle,
+                json.dump({"version": 1, "applications": self._custom, "hidden": sorted(self._hidden)}, handle,
                           ensure_ascii=False, indent=2)
                 handle.flush()
                 os.fsync(handle.fileno())
@@ -187,10 +193,17 @@ class ApplicationRegistry:
         with self._lock:
             self._discovered = discovered
 
+    def restore_presets(self):
+        with self._lock:
+            self._hidden.clear()
+            self._persist()
+
     def list_apps(self) -> list[dict]:
         with self._lock:
             items = []
             for key, spec in PRESETS.items():
+                if key in self._hidden:
+                    continue
                 override = self._custom.get(key)
                 found = self._discovered.get(key)
                 path = override["path"] if override else found
@@ -222,9 +235,11 @@ class ApplicationRegistry:
 
     def remove(self, app_id: str) -> None:
         with self._lock:
-            if app_id not in self._custom:
+            if not isinstance(app_id, str) or (app_id not in self._custom and app_id not in PRESETS):
                 raise LaunchError("Kayıtlı uygulama bulunamadı.")
-            del self._custom[app_id]
+            if app_id in PRESETS:
+                self._hidden.add(app_id)
+            self._custom.pop(app_id, None)
             self._persist()
 
     def launch(self, app_id: str) -> None:
@@ -234,10 +249,10 @@ class ApplicationRegistry:
         with self._lock:
             if app_id in self._custom:
                 path = self._custom[app_id]["path"]
-            elif app_id in PRESETS and app_id in self._discovered:
+            elif app_id in PRESETS and app_id not in self._hidden and app_id in self._discovered:
                 path = self._discovered[app_id]
             else:
-                raise LaunchError("Uygulama bulunamadı. Ayarlar bölümünden yol ekle.")
+                raise LaunchError("Uygulama bulunamadı. Uygulamalar bölümünden yol ekle.")
         path = safe_launch_path(path)
         try:
             if path.lower().endswith(".lnk"):

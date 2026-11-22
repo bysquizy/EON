@@ -1,13 +1,9 @@
-# EON mimarisi
+# Mimari
 
-**v0.0.3:** Python `http.server` üzerinde yalnızca `127.0.0.1` adresine bağlanan yerel web uygulaması. Tarayıcı ile EON servisi aynı origin'i kullanır. Ollama modeli yine yalnız yerel `127.0.0.1:11434` adresinden çağrılır.
+EON standart Python kütüphanesi ve tarayıcıdaki yerel HTML, CSS ve JavaScript ile çalışır. HTTP sunucusu rastgele bir loopback portu seçer. Durumu değiştiren istekler Host, Origin, CSRF ve içerik türü denetimlerinden geçer.
 
-- `eon/server.py`: HTTP API, Origin ve CSRF kontrolü, sağlık kontrolü, statik arayüz.
-- `eon/service.py`: Sohbet, model, özet, yanıt uzunluğu ve eşzamanlılık yönetimi.
-- `eon/session.py`: RAM'deki ayrı sohbetler, başlıkları ve geçmiş.
-- `eon/launcher.py`: Kullanıcının açık isteğiyle uygulama keşfi, EXE/LNK doğrulama ve başlatma.
-- `eon/ui/`: Harici JS/CSS kaynağı gerektirmeyen yerel arayüz.
+Ollama istemcisi yalnız sabit loopback adresine bağlanır ve kurulu yerel modelleri kullanır. Sohbet yanıtı satır bazlı JSON olarak işlenir. Her üretim kaynak sohbeti ve ayarlarını yakalar. İptal soket okumayı keser. Başarıyla biten yanıt tek işlemde geçmişe eklenir. Düzenleme, sonraki mesajları ancak yeni yanıt tamamlandığında değiştirir.
 
-Sohbet içeriği diske yazılmaz. Uygulama yolları yerel bir ayar dosyasına kaydedilir. Rastgele yerel port, oturuma özgü CSRF token ve sabit origin denetimi uygulanır. EON terminal komutlarını ve modelin istediği otomatik bilgisayar eylemlerini çalıştırmaz.
+Servis bağlam için en son tamamlanmış mesaj çiftlerini ve ayrılan alan elverdiğinde eski kullanıcı mesajlarından kısa alıntıları seçer. Bayt bütçesi token sayısının yaklaşık değeridir. Kullanıcının isteyebildiği yerel model özeti ayrıca üretilir.
 
-**Gelecek:** Kalıcı sohbet için şifreli depolama; fail-closed izin/araç akışları ve çevrimdışı ses. Bu özellikler bugün uygulanmış değildir.
+Windows kasası DPAPI ile korunan tek bir dosyadır. Kullanıcı bağlamında şifreleme, tek yazıcı kilidi ve atomik dosya değişimi uygulanır. Bu boyuttaki koleksiyonlar için SQLCipher ve ek anahtar dağıtımı gerekmez. Kasa her değişiklikte yeniden şifrelenir. Uygulama kayıtları ayrı bir yerel dosyada tutulur.

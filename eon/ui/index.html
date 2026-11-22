@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#070b1b">
   <title>EON — Yerel Asistan</title>
   <link rel="stylesheet" href="/style.css">
+  <script defer src="/chat.js"></script>
   <script defer src="/app.js"></script>
 </head>
 <body>
@@ -26,7 +27,8 @@
   </svg>
   <div class="window">
     <header class="topbar">
-      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.0.3</span></div>
+      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.1.0</span></div>
+      <div class="ambient"><time id="clock"></time><span id="forecast">Hava durumu kapalı</span></div>
       <div class="top-status" id="connection"><span class="status-dot"></span><span id="connectionText">Bağlanıyor...</span></div>
     </header>
     <div class="main-layout">
@@ -34,6 +36,7 @@
         <button class="nav-button selected" data-view="chat" title="Sohbet" aria-label="Sohbet"><svg><use href="#i-chat"/></svg></button>
         <button class="nav-button" data-view="apps" title="Uygulamalar" aria-label="Uygulamalar"><svg><use href="#i-apps"/></svg></button>
         <button class="nav-button" data-view="history" title="Geçmiş" aria-label="Geçmiş"><svg><use href="#i-history"/></svg></button>
+        <button class="nav-button" data-view="memory" title="Hafıza" aria-label="Hafıza">◇</button>
         <button class="nav-button" data-view="settings" title="Ayarlar" aria-label="Ayarlar"><svg><use href="#i-settings"/></svg></button>
         <button class="nav-button" id="newChatButton" type="button" title="Yeni sohbet" aria-label="Yeni sohbet"><svg><use href="#i-plus"/></svg></button>
         <div class="nav-divider"></div>
@@ -67,7 +70,7 @@
               <label class="sr-only" for="messageInput">Mesaj</label>
               <textarea rows="1" maxlength="2500" id="messageInput" placeholder="EON'a bir şey sor..."></textarea>
               <select id="modelSelect" aria-label="Yerel model" title="Model seçimi"><option value="">Modeller yükleniyor</option></select>
-              <button class="send-button" type="button" id="sendButton" title="Mesaj gönder" aria-label="Gönder"><svg><use href="#i-send"/></svg></button>
+              <button type="button" id="stop" class="outline-button hidden">Durdur</button><button class="send-button" type="button" id="sendButton" title="Mesaj gönder" aria-label="Gönder"><svg><use href="#i-send"/></svg></button>
             </div>
             <div class="composer-footer"><span>Yerel AI · Bulut servisi kullanılmaz</span><span id="busyMessage"></span></div>
           </div>
@@ -76,19 +79,38 @@
           <div class="page-heading"><div><p class="eyebrow">ARAÇLAR</p><h2>Uygulamalar</h2><p>Bilgisayarındaki programları buradan tek tıkla aç.</p></div><button class="outline-button" id="refreshApps" type="button"><svg><use href="#i-refresh"/></svg> Yeniden ara</button></div>
           <div class="app-list" id="appList"></div>
           <div class="app-footer"><span>Yol bulunamadıysa uygulamayı seçerek ekleyebilirsin.</span><button id="addApp" class="outline-button" type="button"><svg><use href="#i-plus"/></svg> Uygulama ekle</button></div>
+          <button type="button" class="text-button" id="restoreApps">Gizlenen hazır uygulamaları göster</button>
           <p class="subtle-note">Uygulamalar yalnızca <strong>Aç</strong> düğmesine bastığında başlatılır. Kaydettiğin yollar bu bilgisayarda kalır.</p>
         </section>
         <section class="page content-page" id="view-history" aria-label="Geçmiş">
-          <div class="page-heading"><div><p class="eyebrow">SOHBETLER</p><h2>Sohbet geçmişi</h2><p>Bir sohbete tıklayıp içeriğini açabilirsin. Şimdilik uygulama kapatılınca kaybolur.</p></div><button type="button" class="outline-button" id="newChatInHistory"><svg><use href="#i-plus"/></svg> Yeni sohbet</button></div>
+          <div class="page-heading"><div><p class="eyebrow">SOHBETLER</p><h2>Sohbet geçmişi</h2><p>Bir sohbete tıklayıp içeriğini açabilirsin. <span class="storageStatus"></span></p></div><button type="button" class="outline-button" id="newChatInHistory"><svg><use href="#i-plus"/></svg> Yeni sohbet</button></div>
+          <input class="field" id="chatSearch" type="search" aria-label="Başlığa göre sohbet ara" placeholder="Başlığa göre ara">
           <div class="history-list" id="historyList"></div>
+        </section>
+        <section class="page content-page" id="view-memory" aria-label="Hafıza">
+          <div class="page-heading"><div><h2>Hafıza</h2><p>Buraya eklediğin notlar sohbet yanıtlarında kullanılabilir.</p></div></div>
+          <div class="settings-card"><label for="newNote">Hatırlanacak bilgi</label>
+            <textarea class="field" id="newNote" maxlength="400"></textarea>
+            <button class="outline-button" id="addNote">Kaydet</button><p class="storageStatus"></p>
+            <div id="notes"></div></div>
         </section>
         <section class="page content-page" id="view-settings" aria-label="Ayarlar">
           <div class="page-heading"><div><p class="eyebrow">KONTROL</p><h2>Ayarlar</h2><p>EON'u kullanmak istediğin gibi ayarla.</p></div></div>
           <div class="settings-grid">
+            <div class="settings-card"><h3>Model tercihleri</h3>
+              <label>Özel yönergeler<textarea id="instructions" class="field" maxlength="600"></textarea></label>
+              <label>Bağlam (token)<input class="field" id="contextLimit" type="number" min="512" max="8192"></label>
+              <label>Yanıt sınırı (token)<input class="field" id="outputLimit" type="number" min="1" max="1024"></label>
+              <button class="outline-button" id="savePrefs">Uygula</button></div>
+            <div class="settings-card"><h3>Hava durumu</h3>
+              <label><input type="checkbox" id="weatherConsent"> Girdiğim koordinatların Open-Meteo’ya gönderilmesine izin veriyorum.</label>
+              <label>Enlem<input class="field" id="lat" type="number" min="-90" max="90" step="any"></label>
+              <label>Boylam<input class="field" id="lon" type="number" min="-180" max="180" step="any"></label>
+              <button class="outline-button" disabled id="weatherRead">Hava durumunu getir</button></div>
             <div class="settings-card"><h3>Yanıt uzunluğu</h3><p>Bu oturum için cevapların ayrıntı seviyesini seç.</p><div class="segmented" id="lengthControls"><button type="button" data-style="kisa">Kısa</button><button type="button" data-style="normal">Normal</button><button type="button" data-style="detayli">Detaylı</button></div></div>
             <div class="settings-card"><h3>Yerel model</h3><p>Yalnızca Ollama'da indirilmiş modeller görüntülenir.</p><select id="settingsModelSelect" aria-label="Yerel model seç"></select><button type="button" class="inline-link" id="reloadModels">Model listesini yenile</button></div>
             <div class="settings-card"><h3>Oturum bilgisi</h3><div class="stats-grid"><div><strong id="countMessages">0</strong><span>Mesaj</span></div><div><strong id="countRetries">0</strong><span>Yenileme</span></div><div><strong id="countSummaries">0</strong><span>Özet</span></div><div><strong id="countMinutes">0</strong><span>Dakika</span></div></div></div>
-            <div class="settings-card"><h3>Gizlilik</h3><p>Ayrı sohbetler şimdilik yalnızca bellekte tutulur. Uygulama yolları yerel ayar dosyasına kaydedilir. EON bulut modeli kullanmaz.</p><p class="note-small">Ollama'nın kendi kayıtları ve Windows'un sistem günlükleri bu garantinin dışında olabilir.</p></div>
+            <div class="settings-card"><h3>Gizlilik</h3><p><span class="storageStatus"></span> Uygulama yolları yerel ayar dosyasına kaydedilir. EON bulut modeli kullanmaz.</p><p class="note-small">Ollama'nın kendi kayıtları ve Windows'un sistem günlükleri bu garantinin dışında olabilir.</p></div>
           </div>
         </section>
       </main>
@@ -100,7 +122,7 @@
         <p>Windows'ta açılacak EXE dosyasını veya Başlat menüsü kısayolunu seç.</p>
         <label for="appName">Uygulama adı</label><input type="text" id="appName" maxlength="48" placeholder="Örn. Hesap Makinesi">
         <label for="appPath">Dosya yolu</label><div class="path-row"><input type="text" id="appPath" placeholder="C:\Program Files\...\program.exe"><button id="browseApp" type="button" class="outline-button">Gözat</button></div>
-        <div class="modal-actions"><button type="button" id="removeApp" class="text-button">Kaydı sil</button><div class="modal-spacer"></div><button id="cancelApp" type="button" class="outline-button">İptal</button><button id="saveApp" type="button" class="primary-button">Kaydet</button></div>
+        <div class="modal-actions"><button type="button" id="removeApp" class="text-button">Listeden kaldır</button><div class="modal-spacer"></div><button id="cancelApp" type="button" class="outline-button">İptal</button><button id="saveApp" type="button" class="primary-button">Kaydet</button></div>
       </div>
     </div>
   </div>

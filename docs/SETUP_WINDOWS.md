@@ -1,16 +1,16 @@
 # EON'u Windows'ta çalıştırmak
 
-EON v0.0.3, Python ile çalışan yerel bir tarayıcı uygulamasıdır. Henüz `.exe` kurulum dosyası yoktur.
+EON v0.1.0, Python ile çalışan yerel bir tarayıcı uygulamasıdır. Henüz `.exe` kurulum dosyası yoktur.
 
 ### Kurulum
 
 1. [Python 3.10+](https://www.python.org/downloads/windows/) ve [Ollama](https://ollama.com/download/windows) kur.
 2. Windows kullanıcı ortam değişkenlerinden `OLLAMA_NO_CLOUD=1` ve `OLLAMA_HOST=127.0.0.1:11434` değerlerini ayarla. Ollama'yı tamamen kapatıp yeniden aç.
 3. PowerShell'de `ollama pull qwen3:4b-instruct` komutunu çalıştır. Hafif model için `ollama pull qwen3:1.7b` kullanılabilir.
-4. GitHub'da **Releases → v0.0.3 → Source code (zip)** arşivini indir ve klasöre çıkar.
+4. GitHub'da **Releases → v0.1.0 → Source code (zip)** arşivini indir ve klasöre çıkar.
 5. `baslat.bat` dosyasına çift tıkla. Alternatif: klasörde `py -3 eon.py`.
 
-Terminalde `EON v0.0.3 hazır. Yerel adres: http://127.0.0.1:...` yazdığında arayüz tarayıcıda açılır. Terminali açık tut. EON'u durdurmak için **Ctrl+C**.
+Terminalde `EON v0.1.0 hazır. Yerel adres: http://127.0.0.1:...` yazdığında arayüz tarayıcıda açılır. Terminali açık tut. EON'u durdurmak için **Ctrl+C**.
 
 ### “Failed to fetch” / bağlantı kesildi
 
@@ -26,7 +26,7 @@ Yanıt uzunluğu gibi ayarlar model yanıtını beklemeden değiştirilebilir; y
 
 ### Sohbetler
 
-Soldaki **Geçmiş** simgesinden sohbetlerini listeleyebilir, seçip açabilir veya silebilirsin. **+** düğmesiyle yeni sohbet başlar. Şimdilik sohbetler yalnız RAM'de bulunur; EON kapanınca korunmaz. Kalıcı şifreli kayıt ileriki sürümlerde.
+Soldaki **Geçmiş** simgesinden sohbetlerini listeleyebilir, seçip açabilir veya silebilirsin. **+** düğmesiyle yeni sohbet başlar. Windows, sohbetleri ve elle eklediğin hafıza notlarını hesabına bağlı DPAPI ile şifreler. Geçmiş ekranında kayıt durumunu kontrol edebilirsin. Başka bir EON örneği kasayı kullanıyorsa bu oturum bellekte çalışır. Ctrl+Alt+N yeni sohbet açar, Esc yanıt akışını durdurur.
 
 ### Programları bulma
 

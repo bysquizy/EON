@@ -68,6 +68,28 @@ class ConversationCollection:
         self.active_id = ident
         return ident
 
+    def dump(self):
+        return {"active": self.active_id, "items": [
+            [key, item["title"], item["session"]._history] for key, item in self._items.items()]}
+
+    def restore(self, data):
+        items = {}
+        for key, title, history in data["items"]:
+            if not isinstance(title, str) or not isinstance(history, list) or len(history) % 2:
+                raise ValueError("Geçersiz sohbet.")
+            for i, entry in enumerate(history):
+                if entry["role"] != ("user", "assistant")[i % 2] or not isinstance(entry["content"], str):
+                    raise ValueError("Geçersiz mesaj.")
+            items[key] = {"title": title, "session": VolatileSession(_history=history)}
+        if data["active"] not in items or len(items) > self.max_chats:
+            raise ValueError("Geçersiz sohbet koleksiyonu.")
+        self._items, self.active_id = items, data["active"]
+
+    def rename(self, ident, title):
+        if ident not in self._items or not isinstance(title, str) or not 1 <= len(title.strip()) <= 80:
+            raise ValueError("Geçerli bir sohbet ve 1–80 karakterlik bir başlık seç.")
+        self._items[ident]["title"] = title.strip()
+
     def current(self) -> VolatileSession:
         return self._items[self.active_id]["session"]
 
@@ -79,7 +101,7 @@ class ConversationCollection:
     def list(self) -> list[dict]:
         return [
             {"id": ident, "title": item["title"],
-             "message_count": len(item["session"].history()) // 2}
+             "message_count": len(item["session"]._history) // 2}
             for ident, item in reversed(list(self._items.items()))
         ]
 

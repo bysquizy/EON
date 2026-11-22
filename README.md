@@ -1,45 +1,15 @@
 # EON
 
-**Bilgisayarında çalışan, kontrolü sana bırakan yerel AI asistanı.**
+EON, Windows’ta Ollama ile çalışan yerel bir sohbet asistanıdır. Yanıtları yazılırken okuyabilir, durdurabilir, düzenlediğin mesajdan yeniden başlatabilir veya ayrı sohbetlerde sürdürebilirsin.
 
-EON, sade bir sohbet deneyimini küçük ama faydalı masaüstü araçlarıyla birleştirmek için geliştiriliyor. Modeller kendi bilgisayarında çalışıyor. Harici AI API'si veya ek model aboneliği gerekmiyor.
+## Başlangıç
 
-> **v0.0.3 · Ön sürüm.** Gerçek kullanım testleri devam ediyor. Henüz tam özellikli bir Windows uygulaması değil; Python ile çalışan yerel bir tarayıcı arayüzü.
+1. Python 3.10+ ve Ollama kur. Ollama’yı `127.0.0.1:11434` adresine bağla ve `OLLAMA_NO_CLOUD=1` ile yeniden başlat.
+2. Bir kez `ollama pull qwen3:4b-instruct` çalıştır.
+3. Sürüm ZIP’ini çıkar ve `baslat.bat` dosyasını aç. Tarayıcı açıkken terminali çalışır durumda tut.
 
-## Şu anda neler var?
+Windows sohbet geçmişini, model tercihlerini ve elle eklenen hafıza notlarını kullanıcı hesabına bağlı DPAPI ile şifreler. Geçmiş ekranı kayıt durumunu gösterir. **Ctrl+Alt+N** yeni sohbet açar. **Esc** yanıt akışını durdurur. Uygulama başlatıcı yalnız seçtiğin programı açar.
 
-- **Sohbet:** Ollama'da kurulu yerel modellerle Türkçe veya İngilizce konuşma.
-- **Ayrı sohbetler:** Yeni sohbet oluşturma, geçmiş listesinden açma ve silme.
-- **Sohbet araçları:** Yanıtı yenileme, özetleme, model seçme, kısa/normal/detaylı yanıt, istatistik ve basit hesaplama.
-- **Uygulamalar:** Windows Başlat menüsü, kayıtlı uygulamalar, Masaüstü ve OneDrive Masaüstü kısayollarından program bulmayı deneme; seçtiğin uygulamayı tek tıklamayla açma.
-- **Bağlantı kontrolü:** EON'un yerel sunucusu kapanırsa anlaşılır hata ve yeniden bağlanma seçeneği.
+Saat çevrimdışı çalışır. Hava durumunu kullanmak için Ayarlar’da koordinat gir, Open-Meteo erişimine izin ver ve güncelleme düğmesine bas.
 
-Sohbetlerin **şimdilik yalnızca uygulama açıkken** tutulur. EON kapandığında geçmiş silinir; kalıcı şifreli kayıt henüz hazır değil. Uygulama başlatıcı yolları ise yalnız yerel ayar dosyasında saklanır.
-
-## Kurulum
-
-Windows'ta [Python 3.10+](https://www.python.org/downloads/windows/) ve [Ollama](https://ollama.com/download/windows) kurulu olmalı.
-
-1. Ollama'yı bulut özellikleri kapalı ve yalnız `127.0.0.1:11434` adresini dinleyecek biçimde ayarla.
-2. Modeli bir kez indir:
-
-   ```powershell
-   ollama pull qwen3:4b-instruct
-   ```
-
-3. **[Releases](https://github.com/bysquizy/EON/releases)** bölümünden son sürümün ZIP arşivini indir, çıkar ve `baslat.bat` dosyasını aç.
-4. EON tarayıcıda açılır. **Terminal penceresini açık tut.** Kapatmak için `Ctrl+C` kullan.
-
-Kurulum ve **“Failed to fetch”** sorun giderme adımları: [Windows rehberi](docs/SETUP_WINDOWS.md).
-
-## Sırada ne var?
-
-Kalıcı şifreli sohbet geçmişi, daha gelişmiş izinler, çevrimdışı sesli iletişim ve gerçek masaüstü uygulaması deneyimi. Yeni özellikler yalnızca test edildikçe yayınlanacak.
-
-**Önce güvenlik, sonra yetenek.** Model, kendiliğinden komut çalıştırmaz. Uygulamalar yalnızca arayüzdeki **Aç** düğmesine basılınca başlatılır.
-
----
-
-[**Sürümler**](https://github.com/bysquizy/EON/releases) · [**Yol haritası**](docs/ROADMAP.md) · [**Güvenlik**](SECURITY.md) · [**Gizlilik**](docs/PRIVACY.md) · [**Değişiklikler**](CHANGELOG.md)
-
-<sub>Erken geliştirme sürümü. Açık kaynak lisansı henüz belirlenmedi.</sub>
+[Windows kurulumu](docs/SETUP_WINDOWS.md) · [Gizlilik](docs/PRIVACY.md) · [Değişiklikler](CHANGELOG.md)

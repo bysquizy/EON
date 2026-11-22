@@ -1,9 +1,9 @@
-# EON gizliliği
+# Gizlilik
 
-**v0.0.3'te** sohbetler, ayrı oturumlar ve başlıkları yalnız çalışan Python işleminin belleğinde bulunur. Program kapanınca kaybolur. EON, şifrelenmemiş bir sohbet veritabanı oluşturmaz.
+Sohbetler, başlıklar, elle kaydedilen notlar ve model tercihleri Windows'ta `%LOCALAPPDATA%\EON\library.dpapi` içinde kullanıcı hesabına bağlı olarak korunur. Geçici dosyaya da yalnız şifreli veri yazılır. Windows koruması veya kayıt başarısız olursa uygulama bellekte çalışır ve kayıt durumunu gösterir. Eski kasa korunur. Linux oturumları geçicidir.
 
-Uygulama başlatıcı, seçilen uygulamaların yerel yollarını `%LOCALAPPDATA%\EON\applications.json` dosyasına kaydeder. Bu dosya GitHub'a gönderilmez. Masaüstü kısayollarının keşfi yalnız bilgisayarda yapılır.
+Hafıza ekranına yalnız kullanıcının eklediği kayıtlar girer. Notlar model isteğine sığdıkları ölçüde dahil edilir. Modelle sohbet etmek, uygulama başlatma yetkisi vermez. Seçilen uygulama yolları aynı klasörde `applications.json` içinde saklanır.
 
-Model istekleri yalnız yerel Ollama'ya gider. Model indirme internet gerektirir. Windows, Ollama ve tarayıcının kendi sistem kayıtları EON'un kapsamı dışındadır.
+Ollama çağrıları aynı bilgisayarda kalır. Hava durumu ayrı bir istektir. Ayarlar ekranında açık izin ve güncelleme eylemiyle girilen koordinatlar Open-Meteo’ya gönderilir. Servis bağlantının IP adresini de görür. Konum otomatik alınmaz. Hava durumu izni sekme yeniden açıldığında kapanır.
 
-Kalıcı ve kullanıcı tarafından düzenlenebilir **şifreli** geçmiş sonraki aşamanın hedefidir.
+DPAPI aynı kullanıcı hesabıyla çalışan diğer yazılımlara karşı yalıtım sağlamaz. Tarayıcı, işletim sistemi, yedekler ve Ollama günlükleri kendi saklama kurallarına tabidir.

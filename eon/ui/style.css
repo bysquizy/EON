@@ -25,3 +25,18 @@
 .pending-answer .bubble{border-color:rgba(133,156,249,.5);color:#abb9e8}
 .failed-answer .bubble{border-color:rgba(222,133,133,.7);color:#ffe5e5}
 @media(max-width:620px){.server-alert{flex-wrap:wrap}.conversation-row{min-height:68px}}
+
+:root { --accent: #9fd5f4; --line: rgba(157,198,222,.19); }
+.ambient { display:grid; gap:2px; text-align:center; color:#c6dce9; font-variant-numeric:tabular-nums; }
+.ambient span { color:var(--soft); font-size:11px; }
+.field { display:block; width:100%; background:#0b1425; border:1px solid var(--line-strong);
+  border-radius:9px; padding:9px 12px; color:var(--text); margin:5px 0 13px; }
+.settings-card label { display:block; color:var(--soft); font-size:13px; margin:8px 0; }
+.settings-card textarea { resize:vertical; min-height:64px; }
+.note-row { display:flex; align-items:center; flex-wrap:wrap; gap:10px; border-top:1px solid var(--line); padding:12px 0; }
+.note-row span { flex:1; overflow-wrap:anywhere; }
+.bubble pre { overflow-x:auto; background:#07101b; padding:14px; border-radius:10px; white-space:pre; }
+.bubble h4, .bubble ul { margin:.3em 0; }
+.msg { min-width:0; } .bubble code { color:#b6e3ff; }
+.pending-answer .bubble:empty::after { content:'…'; }
+@media(max-width:620px) { .ambient {font-size:11px} .top-status {max-width:85px} .topbar{gap:8px} .conversation-row {flex-wrap:wrap} }

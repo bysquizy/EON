@@ -1,4 +1,4 @@
-/* EON v0.0.3 — same-origin client. No external APIs or analytics. */
+/* EON v0.1.0 — same-origin client. No external APIs or analytics. */
 'use strict';
 const el = id => document.getElementById(id);
 let csrfToken = '';
@@ -67,7 +67,7 @@ async function reconnect() {
     }
     setConnectionLost(false);
     el('connectionText').textContent = boot.models.connected && installedModels.length
-      ? 'Yerel model hazır' : 'Ollama bağlantısı yok';
+      ? 'Yerel model hazır' : boot.models.connected ? 'Yerel model bulunamadı' : 'Ollama bağlantısı yok';
     toast('EON yerel sunucusuna yeniden bağlandı.');
   } catch (error) {
     toast(error.message);
@@ -94,14 +94,17 @@ function showPage(name) {
   document.querySelectorAll('.page').forEach(page => page.classList.toggle('active-page', page.id === 'view-' + name));
   document.querySelectorAll('.nav-button').forEach(btn => btn.classList.toggle('selected', btn.dataset.view === name));
   if (name === 'history') renderHistory();
-  if (name === 'settings') renderStats();
+  if (name === 'settings' && state) { renderStats(); fillPreferences(); }
   if (name === 'apps') renderApps();
   if (name === 'chat') el('messageInput').focus();
 }
 
 function renderState(newState) {
   state = newState;
-  renderChat();
+  document.querySelectorAll('.storageStatus').forEach(node => node.textContent = state.storage);
+  renderNotes();
+  if (!el('view-settings').classList.contains('active-page')) fillPreferences();
+  if (!activeStream || el("chatLog").dataset.chat !== state.active_chat_id) renderChat();
   renderHistory();
   renderStats();
   document.querySelectorAll('[data-style]').forEach(btn => btn.classList.toggle('selected', btn.dataset.style === state.style));
@@ -113,6 +116,7 @@ function renderState(newState) {
 
 function renderChat() {
   if (!state) return;
+  el("chatLog").dataset.chat = state.active_chat_id;
   const history = state.history || [];
   el('welcome').classList.toggle('hidden', history.length > 0);
   const log = el('chatLog');
@@ -122,8 +126,18 @@ function renderChat() {
     msg.className = 'msg ' + (entry.role === 'user' ? 'user' : 'assistant');
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
-    bubble.textContent = entry.content;
+    if (entry.role === 'assistant') markdown(bubble, entry.content);
+    else bubble.textContent = entry.content;
     msg.appendChild(bubble);
+    const tools = document.createElement('div');
+    tools.className = 'reply-actions';
+    tools.append(action('Kopyala', () => navigator.clipboard.writeText(entry.content)));
+    if (entry.role === 'user') tools.append(action('Düzenle', async () => {
+      if (busy) return;
+      const value = prompt('Bu mesajdan sonraki yanıtlar yeniden oluşturulacak.', entry.content);
+      if (value?.trim()) await streamAnswer(value.trim(), index);
+    }));
+    msg.append(tools);
     if (entry.role === 'assistant' && index === history.length - 1) {
       const actions = document.createElement('div');
       actions.className = 'reply-actions';
@@ -143,7 +157,8 @@ function renderChat() {
 function renderHistory() {
   const root = el('historyList');
   root.replaceChildren();
-  const conversations = state?.conversations || [];
+  const query = el('chatSearch').value.trim().toLocaleLowerCase('tr');
+  const conversations = (state?.conversations || []).filter(c => c.title.toLocaleLowerCase('tr').includes(query));
   if (!conversations.length) {
     const empty = document.createElement('div');
     empty.className = 'empty-hint';
@@ -169,13 +184,16 @@ function renderHistory() {
     remove.textContent = 'Sil';
     remove.setAttribute('aria-label', chat.title + ' sohbetini sil');
     remove.addEventListener('click', () => deleteChat(chat.id));
-    row.append(open, remove);
+    row.append(open, action('Adlandır', async () => {
+      const title = prompt('Sohbet adı', chat.title);
+      if (title?.trim()) renderState(await request('/api/chats/rename', {id: chat.id, title}));
+    }), remove);
     root.appendChild(row);
   });
 }
 
 async function newChat() {
-  if (busy) return toast('Önce mevcut yanıt tamamlansın.');
+  if (busy && !activeStream) return toast('İşlem tamamlanıyor.');
   try {
     renderState(await request('/api/chats/new', {}));
     el('summaryPanel').classList.add('hidden');
@@ -184,7 +202,7 @@ async function newChat() {
 }
 
 async function openChat(id) {
-  if (busy) return toast('Önce mevcut yanıt tamamlansın.');
+  if (busy && !activeStream) return toast('İşlem tamamlanıyor.');
   try {
     renderState(await request('/api/chats/open', {id}));
     el('summaryPanel').classList.add('hidden');
@@ -193,7 +211,7 @@ async function openChat(id) {
 }
 
 async function deleteChat(id) {
-  if (busy) return toast('Önce mevcut yanıt tamamlansın.');
+  if (busy && !activeStream) return toast('İşlem tamamlanıyor.');
   if (!confirm('Bu sohbeti silmek istiyor musun?')) return;
   try {
     renderState(await request('/api/chats/delete', {id}));
@@ -241,7 +259,7 @@ async function loadModels() {
 }
 
 async function changeModel(name) {
-  if (!name || busy) return;
+  if (!name) return;
   try {
     const updated = await request('/api/model', {model: name});
     renderState(updated);
@@ -281,7 +299,8 @@ async function send() {
   const isCommand = text.startsWith('/');
   // Clear immediately, not after a slow local model call.
   input.value = '';
-  const status = isCommand ? null : showPendingMessage(text);
+  if (!isCommand) return streamAnswer(text);
+  const status = null;
   setBusy(true, 'EON yanıt hazırlıyor...');
   try {
     const result = await request('/api/message', {text});
@@ -310,13 +329,7 @@ async function send() {
 
 async function regenerate() {
   if (busy) return;
-  setBusy(true, 'Yanıt yenileniyor...');
-  try {
-    const result = await request('/api/regenerate', {});
-    renderState(result.state);
-    showPage('chat');
-  } catch (error) { toast(error.message); }
-  finally { setBusy(false); renderChat(); }
+  await streamAnswer(null);
 }
 
 function showSummary(content) {
@@ -337,7 +350,6 @@ async function summarize() {
 }
 
 async function changeLength(style) {
-  if (busy) return;
   try {
     renderState(await request('/api/length', {style}));
     toast('Yanıt modu güncellendi.');
@@ -402,7 +414,7 @@ function openAppModal(app) {
   el('appName').value = app?.name || '';
   el('appName').readOnly = Boolean(app && ['chrome','spotify','notion','obs','solidworks','antigravity'].includes(app.id));
   el('appPath').value = app?.path || '';
-  el('removeApp').classList.toggle('hidden', !app || app.source !== 'saved');
+  el('removeApp').classList.toggle('hidden', !app);
   el('appModal').classList.remove('hidden');
   el('appName').focus();
 }
@@ -423,7 +435,7 @@ async function saveApp() {
 }
 
 async function removeApp() {
-  if (!confirm('Kaydedilen uygulama yolunu silmek istiyor musun?')) return;
+  if (!confirm('Uygulama listeden kaldırılsın mı?')) return;
   try {
     const result = await request('/api/apps/remove', {id: editId});
     apps = result.apps || [];
@@ -469,6 +481,10 @@ function wireEvents() {
   });
   ['modelSelect','settingsModelSelect'].forEach(id => el(id).addEventListener('change', evt => changeModel(evt.target.value)));
   el('reloadModels').addEventListener('click', async () => { try { await loadModels(); toast('Model listesi güncellendi.'); } catch (error) { toast(error.message); } });
+  el('restoreApps').onclick = async () => {
+    try { apps = (await request('/api/apps/restore', {})).apps; renderApps(); }
+    catch (error) { toast(error.message); }
+  };
   el('refreshApps').addEventListener('click', refreshApps);
   el('addApp').addEventListener('click', () => openAppModal(null));
   el('closeAppModal').addEventListener('click', closeAppModal);
@@ -482,6 +498,7 @@ function wireEvents() {
 
 async function initialize() {
   wireEvents();
+  wireLibrary();
   try {
     const boot = await request('/api/bootstrap');
     csrfToken = boot.token;

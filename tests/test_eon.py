@@ -372,7 +372,7 @@ class HttpTests(unittest.TestCase):
         with self.fetch('/api/bootstrap') as response:
             data = json.loads(response.read())
             self.assertEqual(len(data['token']) > 20, True)
-            self.assertEqual(data['state']['version'], '0.0.3')
+            self.assertEqual(data['state']['version'], '0.1.0')
             self.assertIn("connect-src 'self'", response.headers['Content-Security-Policy'])
 
     def test_html_rendered(self):

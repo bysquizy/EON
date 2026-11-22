@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
 import secrets
+import re
 import threading
 from urllib.parse import urlsplit
 
@@ -15,6 +16,7 @@ ASSET_DIR = Path(__file__).parent / "ui"
 ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
+    "/chat.js": ("chat.js", "application/javascript; charset=utf-8"),
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
 }
 
@@ -41,10 +43,13 @@ class EonHandler(BaseHTTPRequestHandler):
         # Never log message content, application paths, or sensitive query data.
         pass
 
-    def _headers(self, status: int, type_: str, size: int) -> None:
+    def _headers(self, status: int, type_: str, size: int | None) -> None:
         self.send_response(status)
         self.send_header("Content-Type", type_)
-        self.send_header("Content-Length", str(size))
+        if size is not None:
+            self.send_header("Content-Length", str(size))
+        else:
+            self.send_header("Connection", "close")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
@@ -76,7 +81,7 @@ class EonHandler(BaseHTTPRequestHandler):
                                     "models": self.server.service.models(),
                                     "apps": self.server.service.launcher.list_apps()})
         if path == "/api/health":
-            return self._json(200, {"status": "ok", "version": "0.0.3"})
+            return self._json(200, {"status": "ok", "version": "0.1.0"})
         if path == "/api/state":
             return self._json(200, self.server.service.snapshot())
         if path == "/api/models":
@@ -108,7 +113,37 @@ class EonHandler(BaseHTTPRequestHandler):
         service = self.server.service
         route = urlsplit(self.path).path
         try:
-            if route == "/api/message":
+            if route == "/api/stream":
+                key = payload.get("key")
+                if not isinstance(key, str) or not re.fullmatch(r"[a-zA-Z0-9-]{16,64}", key) or not isinstance(payload.get("id"), str):
+                    raise ValueError("Geçersiz sohbet isteği.")
+                self._headers(200, "application/x-ndjson; charset=utf-8", None)
+                def event(value):
+                    self.wfile.write(json.dumps(value, ensure_ascii=False).encode() + b"\n")
+                    self.wfile.flush()
+                try:
+                    result = service.generate(text=payload.get("text"), chat_id=payload["id"],
+                                              key=key, edit_index=payload.get("index"),
+                                              emit=lambda part: event({"delta": part}),
+                                              ready=lambda: event({"ready": True}))
+                    event({"state": result["state"]})
+                except (ValueError, LocalModelError) as exc:
+                    event({"error": str(exc)})
+                except OSError:
+                    pass
+                return
+            elif route == "/api/stop":
+                result = service.cancel(payload.get("key"))
+            elif route == "/api/weather":
+                from .weather import forecast
+                result = forecast(payload.get("consent"), payload.get("lat"), payload.get("lon"))
+            elif route == "/api/preferences":
+                result = service.preferences(payload.get("instructions"), payload.get("context"), payload.get("output"))
+            elif route == "/api/memory":
+                result = service.memory_edit(payload.get("id", ""), payload.get("value"))
+            elif route == "/api/chats/rename":
+                result = service.rename(payload.get("id"), payload.get("title"))
+            elif route == "/api/message":
                 result = service.send(payload.get("text", ""))
             elif route == "/api/regenerate":
                 result = service.regenerate()
@@ -128,6 +163,9 @@ class EonHandler(BaseHTTPRequestHandler):
                 result = service.clear()
             elif route == "/api/apps/refresh":
                 service.launcher.refresh()
+                result = {"apps": service.launcher.list_apps()}
+            elif route == "/api/apps/restore":
+                service.launcher.restore_presets()
                 result = {"apps": service.launcher.list_apps()}
             elif route == "/api/apps/save":
                 result = service.launcher.save(payload.get("id", ""), payload.get("name", ""), payload.get("path", ""))

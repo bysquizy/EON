@@ -1,4 +1,4 @@
-"""EON v0.0.3 — local desktop-style interface, or optional terminal mode."""
+"""EON v0.1.0 — local desktop-style interface, or optional terminal mode."""
 import argparse
 import webbrowser
 
@@ -8,7 +8,7 @@ from eon.server import start_server
 
 
 def run_cli(service: EonService) -> int:
-    print("EON v0.0.3 — Yerel CLI · /yardim ile komutları gör")
+    print("EON v0.1.0 — Yerel CLI · /yardim ile komutları gör")
     while True:
         try:
             text = input("Sen > ").strip()
@@ -33,12 +33,13 @@ def main() -> int:
     parser.add_argument("--no-browser", action="store_true", help="Tarayıcıyı açma")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Kurulu yerel model adı")
     args = parser.parse_args()
-    service = EonService(model=args.model)
+    from eon.launcher import storage_path
+    service = EonService(model=args.model, vault_path=storage_path().with_name("library.dpapi"))
     if args.cli:
         return run_cli(service)
     server = start_server(service=service)
     url = server.origin
-    print("EON v0.0.3 hazır. Yerel adres:", url)
+    print("EON v0.1.0 hazır. Yerel adres:", url)
     print("Kapatmak için Ctrl+C. Dosyalar ve program yolları GitHub'a gönderilmez.")
     if not args.no_browser:
         webbrowser.open(url)
