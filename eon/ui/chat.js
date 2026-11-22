@@ -61,14 +61,25 @@ async function streamAnswer(text, index = null) {
   activeStream = key;
   setBusy(true, 'Yanıt hazırlanıyor…');
   let completed = false;
+  let queuedText = '', frame = 0, first = true;
+  function flush() {
+    frame = 0;
+    if (!queuedText || !status.isConnected) { queuedText = ''; return; }
+    const log = el('chatLog');
+    const follow = log.scrollHeight - log.scrollTop - log.clientHeight < 120;
+    if (first) { status.replaceChildren(); first = false; }
+    status.append(queuedText);
+    queuedText = '';
+    if (follow) log.scrollTop = log.scrollHeight;
+  }
   try {
     const response = await fetch('/api/stream', {method:'POST',
-      headers:{'Content-Type':'application/json','X-EON-Token':csrfToken},
-      body:JSON.stringify({key, id, text, index})});
+      headers:{'Content-Type':'application/json','X-EON-Token':csrfToken,'X-EON-Access':sessionAccess},
+      body:JSON.stringify({key, id, text, index, destination:state.cloud_model || "ollama"})});
     if (!response.ok) throw new Error('Sohbet bağlantısı kurulamadı. Yeniden bağlanmayı dene.');
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
     let pending = '';
-    let first = true;
+
     try {
       while (true) {
         const {value, done} = await reader.read();
@@ -81,10 +92,8 @@ async function streamAnswer(text, index = null) {
           if (event.ready) el('stop').classList.remove('hidden');
           if (event.error) throw new Error(event.error);
           if (event.delta) {
-            if (first) { status.replaceChildren(); first = false; }
-            status.append(event.delta);
-            const log = el('chatLog');
-            if (log.scrollHeight - log.scrollTop - log.clientHeight < 120) log.scrollTop = log.scrollHeight;
+            queuedText += event.delta;
+            if (!frame) frame = requestAnimationFrame(flush);
           }
           if (event.state) {
             completed = true;
@@ -99,10 +108,15 @@ async function streamAnswer(text, index = null) {
     if (error instanceof TypeError) setConnectionLost(true);
     toast(error instanceof TypeError ? 'Yerel sunucuya ulaşılamadı. Yeniden bağlanmayı dene.' : error.message);
   } finally {
+    cancelAnimationFrame(frame);
     activeStream = null;
     el('stop').classList.add('hidden');
     setBusy(false);
+    const log = el('chatLog');
+    const top = log.scrollTop;
+    const preserve = log.scrollHeight - top - log.clientHeight > 120;
     renderChat();
+    if (preserve) log.scrollTop = top;
   }
 }
 
@@ -158,17 +172,5 @@ function wireLibrary() {
   document.addEventListener('keydown', e => {
     if (e.ctrlKey && e.altKey && e.code === 'KeyN') { e.preventDefault(); newChat(); }
     if (e.key === 'Escape' && activeStream && !document.querySelector('dialog[open]')) el('stop').click();
-  });
-  let weatherVersion = 0;
-  el('weatherConsent').onchange = () => {
-    weatherVersion++;
-    el('weatherRead').disabled = !el('weatherConsent').checked;
-    el('forecast').textContent = el('weatherConsent').checked ? 'Hava verisi bekleniyor' : 'Hava durumu kapalı';
-  };
-  bind('weatherRead', async () => {
-    const version = ++weatherVersion;
-    const report = await request('/api/weather', {consent:el('weatherConsent').checked,
-      lat:el('lat').valueAsNumber, lon:el('lon').valueAsNumber});
-    if (version === weatherVersion) el('forecast').textContent = report.label;
   });
 }

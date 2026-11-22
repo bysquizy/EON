@@ -11,7 +11,7 @@ PATTERNS = {
     "secret": re.compile(r"(?:ghp_|gho_|github_pat_|sk-)[A-Za-z0-9_\-]{12,}"),
     "private key": re.compile(r"-+BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-+"),
 }
-CHECK_EXT = {'.py', '.md', '.html', '.css', '.js', '.yml', '.yaml', '.json', '.txt', '.bat'}
+CHECK_EXT = {'.py', '.md', '.html', '.css', '.js', '.cjs', '.yml', '.yaml', '.json', '.txt', '.bat'}
 
 def main() -> int:
     try:

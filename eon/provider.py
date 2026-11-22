@@ -1,7 +1,11 @@
 """Ollama client. All HTTP calls are fixed to 127.0.0.1; redirects are never followed."""
 import http.client
 import json
-from typing import Callable
+from typing import Callable, Protocol
+
+
+class StreamingProvider(Protocol):
+    def stream(self, messages, emit, job): ...
 
 from .config import LocalSettings, OLLAMA_HOST, OLLAMA_PORT, valid_model
 
@@ -21,9 +25,9 @@ class LocalOllama:
         self._factory = connection_factory
 
     def _call(self, method: str, route: str, payload=None) -> dict:
-        if (method, route) not in (("GET", "/api/tags"), ("POST", "/api/chat")):
+        if (method, route) not in (("GET", "/api/tags"), ("POST", "/api/chat"), ("GET", "/api/ps"), ("POST", "/api/generate")):
             raise LocalModelError("Ollama için izin verilmeyen API yolu.")
-        timeout = 4 if route == "/api/tags" else self.settings.timeout_seconds
+        timeout = 4 if method == "GET" else self.settings.timeout_seconds
         conn = self._factory(OLLAMA_HOST, OLLAMA_PORT, timeout=timeout)
         try:
             body = None
@@ -50,6 +54,13 @@ class LocalOllama:
             raise LocalModelError("Yerel Ollama bağlantısı veya yanıtı okunamadı.") from None
         finally:
             conn.close()
+
+    def loaded(self):
+        return [{"model": m.get("name"), "bytes": m.get("size"), "vram": m.get("size_vram")}
+                for m in self._call("GET", "/api/ps").get("models", []) if isinstance(m, dict)]
+
+    def unload(self):
+        self._call("POST", "/api/generate", {"model":self.settings.model, "keep_alive":0, "stream":False})
 
     def installed_models(self) -> list[str]:
         data = self._call("GET", "/api/tags")
@@ -81,7 +92,7 @@ class LocalOllama:
             "messages": messages,
             "stream": stream,
             "think": False,
-            "keep_alive": "3m",
+            "keep_alive": 0 if self.settings.keep_alive == "0" else self.settings.keep_alive,
             "options": {
                 "num_ctx": self.settings.context_tokens,
                 "num_predict": self.settings.output_tokens,
@@ -125,6 +136,9 @@ class LocalOllama:
                     if message["content"]:
                         emit(message["content"])
                     if event.get("done") is True:
+                        count, duration = event.get("eval_count"), event.get("eval_duration")
+                        if type(count) == int and type(duration) == int and duration > 0:
+                            self.tokens_per_second = round(count * 1e9 / duration, 1)
                         return
         except (OSError, ValueError, http.client.HTTPException):
             job.check()

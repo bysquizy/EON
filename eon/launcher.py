@@ -54,7 +54,10 @@ def safe_launch_path(value: str, *, windows: bool = True) -> str:
         raise LaunchError("Yalnız EXE ve Windows kısayolu (LNK) seçilebilir.")
     if not Path(path).is_file():
         raise LaunchError("Bu konumda uygulama dosyası bulunamadı.")
-    return str(Path(path).resolve(strict=True))
+    resolved = str(Path(path).resolve(strict=True))
+    if windows and (not re.match(r"^[A-Za-z]:[\\/]", resolved) or ntpath.splitext(resolved)[1].lower() not in (".exe",".lnk")):
+        raise LaunchError("Hedef yerel bir EXE veya kısayol olmalı.")
+    return resolved
 
 
 def shortcut_search_directories(environ=None) -> list[Path]:
@@ -242,7 +245,7 @@ class ApplicationRegistry:
             self._custom.pop(app_id, None)
             self._persist()
 
-    def launch(self, app_id: str) -> None:
+    def target(self, app_id: str) -> str:
         """Launch only an explicitly selected entry; never a freeform chat instruction."""
         if self.platform != "win32":
             raise LaunchError("Uygulama başlatma yalnız Windows'ta kullanılabilir.")
@@ -254,13 +257,38 @@ class ApplicationRegistry:
             else:
                 raise LaunchError("Uygulama bulunamadı. Uygulamalar bölümünden yol ekle.")
         path = safe_launch_path(path)
+        if path.lower().endswith(".lnk"):
+            path = shortcut_executable(path)
+        return path
+
+    def launch(self, app_id: str, expected=None) -> None:
+        path = self.target(app_id)
+        if expected is not None and expected != path:
+            raise LaunchError("Uygulama hedefi değişti. Yeniden kontrol et.")
         try:
-            if path.lower().endswith(".lnk"):
-                os.startfile(path)
-            else:
-                self._start_process([path], shell=False, cwd=str(Path(path).parent), close_fds=True)
+            self._start_process([path], shell=False, cwd=str(Path(path).parent), close_fds=True)
         except OSError as exc:
             raise LaunchError("Windows uygulamayı başlatamadı.") from None
+
+
+def shortcut_executable(path):
+    # Read shortcut metadata only. The shortcut itself is never executed.
+    exe = Path(os.environ["SystemRoot"]) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    script = ("[Console]::InputEncoding=[Text.UTF8Encoding]::new($false);"
+              "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);"
+              "$p=[Console]::In.ReadToEnd();"
+              "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($p);"
+              "@{target=$s.TargetPath;args=$s.Arguments}|ConvertTo-Json -Compress")
+    try:
+        result = subprocess.run([str(exe), "-NoProfile", "-NonInteractive", "-Command", script],
+                                input=path, text=True, encoding="utf-8", capture_output=True,
+                                timeout=5, check=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        info = json.loads(result.stdout)
+        if info.get("args") or not isinstance(info.get("target"), str) or not info["target"].lower().endswith(".exe"):
+            raise LaunchError("Argümansız yerel EXE hedefi gerekli. Programı doğrudan seç.")
+        return safe_launch_path(info["target"])
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        raise LaunchError("Kısayol hedefi okunamadı. EXE dosyasını seç.") from None
 
 
 def choose_executable() -> str:

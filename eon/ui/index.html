@@ -6,9 +6,12 @@
   <meta name="theme-color" content="#070b1b">
   <title>EON — Yerel Asistan</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/theme.css">
   <script defer src="/chat.js"></script>
   <script defer src="/workspace.js"></script>
+  <script defer src="/hybrid.js"></script>
   <script defer src="/app.js"></script>
+  <script defer src="/extras.js"></script>
 </head>
 <body>
   <svg width="0" height="0" class="svg-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
@@ -28,7 +31,7 @@
   </svg>
   <div class="window">
     <header class="topbar">
-      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.2.0</span></div>
+      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.3.0</span></div>
       <button id="commandOpen" class="outline-button" aria-haspopup="dialog" title="Komut Merkezi (Ctrl+K)">Komutlar <kbd>Ctrl K</kbd></button>
       <div class="ambient"><time id="clock"></time><span id="forecast">Hava durumu kapalı</span></div>
       <div class="top-status" id="connection"><span class="status-dot"></span><span id="connectionText">Bağlanıyor...</span></div>
@@ -75,7 +78,7 @@
               <select id="modelSelect" aria-label="Yerel model" title="Model seçimi"><option value="">Modeller yükleniyor</option></select>
               <button type="button" id="stop" class="outline-button hidden">Durdur</button><button class="send-button" type="button" id="sendButton" title="Mesaj gönder" aria-label="Gönder"><svg><use href="#i-send"/></svg></button>
             </div>
-            <div class="composer-footer"><span>Yerel AI · Bulut servisi kullanılmaz</span><span id="busyMessage"></span></div>
+            <div class="composer-footer"><span id="providerBadge">Yerel Ollama</span><span id="busyMessage"></span></div>
           </div>
         </section>
         <section class="page content-page" id="view-apps" aria-label="Uygulamalar">
@@ -102,6 +105,24 @@
         <section class="page content-page" id="view-settings" aria-label="Ayarlar">
           <div class="page-heading"><div><p class="eyebrow">KONTROL</p><h2>Ayarlar</h2><p>EON'u kullanmak istediğin gibi ayarla.</p></div></div>
           <div class="settings-grid">
+            <div class="settings-card"><h3>AI sağlayıcısı</h3>
+              <p>Yeni sohbetler yerel Ollama ile açılır. Gemini için ayrı bir sohbet aç ve aktarımı onayla.</p>
+              <button class="outline-button" id="localNew">Yerel sohbet aç</button>
+              <button class="outline-button" id="keyEnter">Windows’ta anahtar gir</button>
+              <button class="text-button" id="keyDelete">Anahtarı kaldır</button>
+              <button class="outline-button" id="cloudTest">Google bağlantısını test et</button>
+              <select id="cloudModel" aria-label="Google Gemini modeli"></select>
+              <label><input type="checkbox" id="shareMemory"> Bu Gemini sohbetine genel hafızayı dahil et</label>
+              <label><input type="checkbox" id="sharePrefs"> Bu Gemini sohbetine genel yönergelerimi dahil et</label>
+              <button class="text-button" id="compareModels">Örnek soruyla karşılaştır</button><p id="comparison" role="status"></p>
+              <button class="outline-button" id="cloudNew">Gemini sohbetini etkinleştir</button>
+              <p>Test yalnız model listesini ister. Sohbet iletileri Google’a gider. Kota, ücret ve verilerin ürün geliştirmede kullanımı API hesabına ve hizmet katmanına bağlıdır. Google AI Pro, API kotası garantisi vermez.</p>
+            </div>
+            <div class="settings-card"><h3>Model belleği ve sistem sağlığı</h3>
+              <label>Ollama yanıt sonrası <select id="keepAlive"><option value="0">Hemen boşalt</option><option value="3m">3 dakika tut</option><option value="15m">15 dakika tut</option></select></label>
+              <button class="outline-button" id="unloadModel">Seçili yerel modeli boşalt</button>
+              <button class="outline-button" id="runtimeStatus">Sistem sağlığını göster</button><p id="healthInfo" role="status"></p>
+            </div>
             <div class="settings-card"><h3>Projeler ve modlar</h3>
               <button class="outline-button" id="manageProjects">Projeleri yönet</button>
               <button class="outline-button" id="manageModes">Modları yönet</button></div>
@@ -117,13 +138,15 @@
               <button class="outline-button" id="savePrefs">Uygula</button></div>
             <div class="settings-card"><h3>Hava durumu</h3>
               <label><input type="checkbox" id="weatherConsent"> Girdiğim koordinatların Open-Meteo’ya gönderilmesine izin veriyorum.</label>
+              <label>Şehir <select id="city"><option value="">Elle koordinat</option></select></label>
               <label>Enlem<input class="field" id="lat" type="number" min="-90" max="90" step="any"></label>
               <label>Boylam<input class="field" id="lon" type="number" min="-180" max="180" step="any"></label>
+              <button class="outline-button" id="weatherSave">Konum tercihini kaydet</button>
               <button class="outline-button" disabled id="weatherRead">Hava durumunu getir</button></div>
             <div class="settings-card"><h3>Yanıt uzunluğu</h3><p>Bu oturum için cevapların ayrıntı seviyesini seç.</p><div class="segmented" id="lengthControls"><button type="button" data-style="kisa">Kısa</button><button type="button" data-style="normal">Normal</button><button type="button" data-style="detayli">Detaylı</button></div></div>
             <div class="settings-card"><h3>Yerel model</h3><p>Yalnızca Ollama'da indirilmiş modeller görüntülenir.</p><select id="settingsModelSelect" aria-label="Yerel model seç"></select><button type="button" class="inline-link" id="reloadModels">Model listesini yenile</button></div>
             <div class="settings-card"><h3>Oturum bilgisi</h3><div class="stats-grid"><div><strong id="countMessages">0</strong><span>Mesaj</span></div><div><strong id="countRetries">0</strong><span>Yenileme</span></div><div><strong id="countSummaries">0</strong><span>Özet</span></div><div><strong id="countMinutes">0</strong><span>Dakika</span></div></div></div>
-            <div class="settings-card"><h3>Gizlilik</h3><p><span class="storageStatus"></span> Uygulama yolları yerel ayar dosyasına kaydedilir. EON bulut modeli kullanmaz.</p><p class="note-small">Ollama'nın kendi kayıtları ve Windows'un sistem günlükleri bu garantinin dışında olabilir.</p></div>
+            <div class="settings-card"><h3>Gizlilik</h3><p><span class="storageStatus"></span> Uygulama yolları yerel ayar dosyasına kaydedilir. Gemini yalnız onaylanan bulut sohbetlerinde kullanılır.</p><p class="note-small">Ollama'nın kendi kayıtları ve Windows'un sistem günlükleri bu garantinin dışında olabilir.</p></div>
           </div>
         </section>
       </main>
@@ -135,6 +158,9 @@
         <p>Windows'ta açılacak EXE dosyasını veya Başlat menüsü kısayolunu seç.</p>
         <label for="appName">Uygulama adı</label><input type="text" id="appName" maxlength="48" placeholder="Örn. Hesap Makinesi">
         <label for="appPath">Dosya yolu</label><div class="path-row"><input type="text" id="appPath" placeholder="C:\Program Files\...\program.exe"><button id="browseApp" type="button" class="outline-button">Gözat</button></div>
+        <div id="iconChoices"><label>Uygulama simgesi (PNG, JPEG, WebP veya ICO)<input type="file" accept="image/png,image/jpeg,image/webp,.ico" id="iconFile"></label>
+        <button class="text-button" type="button" id="iconWindows">EXE simgesini kullan</button>
+        <button class="text-button" type="button" id="iconClear">Özel simgeyi kaldır</button></div>
         <div class="modal-actions"><button type="button" id="removeApp" class="text-button">Listeden kaldır</button><div class="modal-spacer"></div><button id="cancelApp" type="button" class="outline-button">İptal</button><button id="saveApp" type="button" class="primary-button">Kaydet</button></div>
       </div>
     </div>

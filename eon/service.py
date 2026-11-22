@@ -3,11 +3,14 @@ from dataclasses import replace
 import threading
 import time
 import secrets
+from pathlib import Path
+from .credentials import secret
+from .gemini import Gemini, MODEL
 from .vault import Vault
 from .workspace import Workspace, check_text, fold
 
 from .config import DEFAULT_MODEL, LocalSettings, OUTPUT_LIMITS, STYLE_GUIDANCE, SYSTEM_PROMPT
-from .provider import LocalModelError, LocalOllama
+from .provider import LocalModelError, LocalOllama, StreamingProvider
 from .session import ConversationCollection
 from .tools import ToolError, calculate
 from .launcher import ApplicationRegistry
@@ -56,6 +59,17 @@ class EonService:
         self.memory = {}
         self.instructions = ""
         self.workspace = Workspace()
+        self.cloud_chats = {}
+        self.cloud_allowed = set()
+        self.cloud_sharing = {}
+        self.cloud_models = []
+        self.secret_path = Path(vault_path).with_name("gemini.dpapi") if vault_path else None
+        self.secret_guard = threading.Lock()
+        self.model_cache = None
+        self.icons = {}
+        self.metrics = {}
+        self.weather_pref = {"asked":False, "enabled":False}
+        self.legacy_backup = False
         self.vault = None
         self.storage_notice = "Yalnızca bu oturumda saklanır."
         if vault_path:
@@ -66,10 +80,10 @@ class EonService:
                     if not isinstance(data, dict):
                         raise ValueError("Kasa kaydı geçersiz.")
                     schema = data.get("schema", 1)
-                    if schema not in (1, 2):
+                    if schema not in (1, 2, 3):
                         raise ValueError("Kasa sürümü desteklenmiyor.")
                     library, chats = Workspace(), ConversationCollection()
-                    if schema == 2:
+                    if schema >= 2:
                         library.restore(data["workspace"])
                     chats.restore(data["chats"])
                     for item in chats._items.values():
@@ -79,6 +93,23 @@ class EonService:
                     self.instructions = data["instructions"]
                     self.settings = LocalSettings(**data["settings"])
                     self.style = data["style"]
+                    self.legacy_backup = schema < 3
+                    if schema == 3:
+                        cloud = data["cloud_chats"]
+                        if not isinstance(cloud, dict) or any(
+                                k not in chats._items or not isinstance(v, str) or not MODEL.fullmatch(v)
+                                for k,v in cloud.items()):
+                            raise ValueError("Sağlayıcı kaydı geçersiz.")
+                        self.cloud_chats = cloud
+                        self.weather_pref = data["weather"]
+                        self.metrics = data.get("metrics", {})
+                        self.icons = data.get("icons", {})
+                        if chats.active_id in cloud:
+                            local = next((k for k in reversed(chats._items) if k not in cloud), None)
+                            if local:
+                                chats.open(local)
+                            elif len(chats._items) < chats.max_chats:
+                                chats.new()
                 self.vault = candidate
                 self.storage_notice = "Windows hesabınla şifrelenerek kaydedilir."
             except (ImportError, OSError, ValueError, TypeError, KeyError, AttributeError):
@@ -88,13 +119,147 @@ class EonService:
     def _save(self):
         if self.vault:
             try:
-                self.vault.save({"schema": 2, "workspace": self.workspace.dump(), "chats": self.chats.dump(), "memory": self.memory,
+                if self.legacy_backup:
+                    self.vault.backup_legacy()
+                    self.legacy_backup = False
+                self.vault.save({"schema": 3, "cloud_chats": self.cloud_chats, "weather":self.weather_pref,
+                                 "metrics":self.metrics, "icons":self.icons, "workspace": self.workspace.dump(), "chats": self.chats.dump(), "memory": self.memory,
                                  "instructions": self.instructions, "settings": vars(self.settings),
                                  "style": self.style})
             except (ValueError, OSError):
                 self.vault.close()
                 self.vault = None
                 self.storage_notice = "Kayıt başarısız. Son değişiklikler yalnız bellekte."
+
+    def credentials_action(self, action):
+        import subprocess
+        import sys
+        with self.secret_guard:
+            if action == "enter":
+                if not self.secret_path or sys.platform != "win32":
+                    raise ValueError("Anahtar girişi için Windows gerekli.")
+                result = subprocess.run([sys.executable, "-m", "eon.credentials", str(self.secret_path)],
+                                        cwd=Path(__file__).resolve().parents[1], stdout=subprocess.DEVNULL,
+                                        stderr=subprocess.DEVNULL, timeout=180)
+                if result.returncode:
+                    raise ValueError("Anahtar penceresi açılamadı veya kayıt başarısız.")
+            elif action == "remove":
+                secret(self.secret_path, "")
+            elif action == "test":
+                models = Gemini(secret(self.secret_path)).models()
+                with self._lock:
+                    self.cloud_models = models
+                return {"models":models}
+            else:
+                raise ValueError("Geçersiz anahtar işlemi.")
+            with self._lock:
+                self.cloud_allowed.clear()
+                self.cloud_sharing.clear()
+                for job in self.jobs.values():
+                    if job.chat_id in self.cloud_chats:
+                        job.cancel()
+                self.cloud_models = []
+            return {"configured": bool(secret(self.secret_path))}
+
+    def compare(self, model, consent):
+        if consent is not True or model not in self.cloud_models:
+            raise ValueError("Model seçimi ve ölçüm onayı gerekli.")
+        if not self._generation_lock.acquire(blocking=False):
+            raise ValueError("Önce mevcut yanıtın tamamlanmasını bekle.")
+        try:
+            self._require_model()
+            prompt = [{"role":"system","content":"Reply briefly."},
+                      {"role":"user","content":"What is 7 times 8? Reply with only the number."}]
+            results = []
+            for name, provider in (("Ollama", self._provider()), ("Gemini", Gemini(secret(self.secret_path), model, 64))):
+                started = time.monotonic()
+                chunks, times = [], []
+                def collect(text):
+                    if not times:
+                        times.append(time.monotonic())
+                    chunks.append(text)
+                provider.stream(prompt, collect, Generation())
+                results.append({"name":name, "correct":"".join(chunks).strip()=="56",
+                                "first":round(times[0]-started,2) if times else None,
+                                "seconds":round(time.monotonic()-started,2)})
+            return {"results":results}
+        finally:
+            self._generation_lock.release()
+
+    def cloud_chat(self, model, ident, consent, memory=False, instructions=False):
+        with self._lock:
+            if consent is not True or model not in self.cloud_models:
+                raise ValueError("Bağlantıyı test et, modeli seç ve veri aktarımını onayla.")
+            if ident:
+                if self.cloud_chats.get(ident) != model:
+                    raise ValueError("Yerel sohbet buluta aktarılamaz.")
+                self.chats.open(ident)
+            else:
+                ident = self.chats.new()
+                self.cloud_chats[ident] = model
+            self.cloud_allowed.add(ident)
+            self.cloud_sharing[ident] = (memory is True, instructions is True)
+            self._save()
+            return self.snapshot()
+
+    def runtime_action(self, action, value=None):
+        if action == "keep":
+            with self._lock:
+                self.settings = replace(self.settings, keep_alive=value)
+                self._save()
+                return self.snapshot()
+        if action == "unload":
+            if not self._generation_lock.acquire(blocking=False):
+                raise ValueError("Boşaltmadan önce yanıtın tamamlanmasını bekle.")
+            try:
+                self._provider().unload()
+            finally:
+                self._generation_lock.release()
+        elif action != "status":
+            raise ValueError("Geçersiz model işlemi.")
+        try:
+            loaded = self._provider().loaded()
+            connected = True
+        except LocalModelError:
+            loaded, connected = [], False
+        return {"connected":connected, "loaded":loaded, "busy":self._generation_lock.locked(),
+                "storage":self.storage_notice, "gemini_tested":bool(self.cloud_models)}
+
+    def apps(self):
+        with self._lock:
+            return [{**app, "icon":self.icons.get(app["id"])} for app in self.launcher.list_apps()]
+
+    def save_icon(self, ident, pixels):
+        import base64
+        if not isinstance(ident, str) or ident not in {app["id"] for app in self.launcher.list_apps()}:
+            raise ValueError("Önce uygulamayı listeye ekle.")
+        with self._lock:
+            if pixels is None:
+                self.icons.pop(ident, None)
+            else:
+                if not isinstance(pixels, str) or len(pixels) != 12288 or len(base64.b64decode(pixels, validate=True)) != 48*48*4:
+                    raise ValueError("Simge verisi geçersiz.")
+                if ident not in self.icons and len(self.icons) >= 32:
+                    raise ValueError("Simge sınırına ulaşıldı.")
+                self.icons[ident] = pixels
+            self._save()
+            return {"apps":self.apps()}
+
+    def weather_settings(self, data):
+        enabled = data.get("enabled")
+        if type(enabled) != bool:
+            raise ValueError("Hava durumu izni geçersiz.")
+        pref = {"asked":True, "enabled":enabled}
+        if enabled:
+            for name, limit in (("lat",90), ("lon",180)):
+                value = data.get(name)
+                if type(value) not in (int, float) or not -limit <= value <= limit:
+                    raise ValueError("Geçerli koordinat gir.")
+                pref[name] = round(value, 3)
+        with self._lock:
+            self.weather_pref = pref
+            self._save()
+            return self.snapshot()
 
     def preferences(self, instructions, context, output):
         if not isinstance(instructions, str) or len(instructions) > 600 or type(context) != int or type(output) != int or output >= context:
@@ -194,10 +359,12 @@ class EonService:
     def _provider(self) -> LocalOllama:
         return self.provider_factory(self.settings)
 
-    def models(self) -> dict:
+    def models(self, refresh=False) -> dict:
         # Avoid holding the service state lock during Ollama HTTP I/O.
         with self._lock:
             settings = self.settings
+            if not refresh and self.model_cache and time.monotonic() < self.model_cache[0]:
+                return {**self.model_cache[1], "selected":settings.model}
         try:
             installed = self.provider_factory(settings).installed_models()
         except LocalModelError:
@@ -206,16 +373,21 @@ class EonService:
         with self._lock:
             if installed and self.settings.model not in installed:
                 self.settings = replace(self.settings, model=installed[0])
-            return {"models": installed, "selected": self.settings.model,
+            result = {"models": installed, "selected": self.settings.model,
                     "connected": True, "notice": "" if installed else "Yerel model bulunamadı."}
+            self.model_cache = (time.monotonic()+10, result)
+            return result
 
     def snapshot(self) -> dict:
         with self._lock:
             history = self.session.history()
             item = self.chats._items[self.chats.active_id]
-            return {"projects": self.workspace.projects.copy(), "modes": self.workspace.modes(),
+            ident = self.chats.active_id
+            return {"cloud_model":self.cloud_chats.get(ident), "cloud_allowed":ident in self.cloud_allowed,
+                    "metrics":self.metrics.get(ident, {}), "keep_alive":self.settings.keep_alive,
+                    "weather_pref":dict(self.weather_pref), "projects": self.workspace.projects.copy(), "modes": self.workspace.modes(),
                     "look": self.workspace.look.copy(), "stars": item["stars"][:], "revision": item["revision"],
-                    "version": "0.2.0", "history": history,
+                    "version": "0.3.0", "history": history,
                     "conversations": self.chats.list(),
                     "active_chat_id": self.chats.active_id,
                     "style": self.style, "model": self.settings.model,
@@ -241,11 +413,15 @@ class EonService:
     def delete_chat(self, ident: str) -> dict:
         with self._lock:
             self.chats.delete(ident)
+            self.cloud_chats.pop(ident, None)
+            self.cloud_allowed.discard(ident)
+            self.cloud_sharing.pop(ident, None)
+            self.metrics.pop(ident, None)
             self._save()
             return self.snapshot()
 
     def select_model(self, model: str) -> dict:
-        available = self.models()
+        available = self.models(refresh=True)
         with self._lock:
             if model not in available["models"]:
                 raise ValueError("Yalnız bilgisayarda kurulu yerel modeller seçilebilir.")
@@ -267,7 +443,7 @@ class EonService:
             raise ValueError("Mesaj 1–2500 karakter olmalı.")
         if text.strip().startswith("/"):
             return self.command(text.strip())
-        return self.generate(text=text)
+        return self.generate(text=text, destination="ollama")
 
     def cancel(self, key):
         with self._lock:
@@ -275,13 +451,18 @@ class EonService:
                 self.jobs[key].cancel()
             return {"stopped": True}
 
-    def generate(self, *, text=None, chat_id=None, key=None, emit=None, edit_index=None, ready=None):
+    def generate(self, *, text=None, chat_id=None, key=None, emit=None, edit_index=None, ready=None, destination=None):
         job = Generation()
         with self._lock:
             ident = self.chats.active_id if chat_id is None else chat_id
             item = self.chats._items.get(ident)
             if item is None:
                 raise ValueError("Sohbet bulunamadı.")
+            cloud = self.cloud_chats.get(ident)
+            if destination is not None and destination != (cloud or "ollama"):
+                raise ValueError("Sağlayıcı değişti. Sohbeti yeniden aç.")
+            if cloud and ident not in self.cloud_allowed:
+                raise ValueError("Bu Gemini sohbeti için Ayarlar üzerinden aktarımı onayla.")
             target = item["session"]
             if not self._generation_lock.acquire(blocking=False):
                 raise ValueError("Bir yanıt zaten hazırlanıyor.")
@@ -290,7 +471,10 @@ class EonService:
         try:
             if ready:
                 ready()
-            self._require_model()
+            started = time.monotonic()
+            first_at = None
+            if not cloud:
+                self._require_model()
             with self._lock:
                 history = target._history
                 count = len(history)
@@ -306,13 +490,17 @@ class EonService:
                     end = count - 2
                 messages = target.messages_for(text, self.style)
                 prompt, user = messages[0], messages[-1]
-                prompt["content"] += "\n" + self.workspace.guidance(item)
-                if self.instructions:
+                if cloud:
+                    prompt["content"] = "Sen EON asistanısın. Kullanıcının dilinde yanıtla. " + STYLE_GUIDANCE[self.style]
+                else:
+                    prompt["content"] += "\n" + self.workspace.guidance(item)
+                share_notes, share_instructions = self.cloud_sharing.get(ident, (False, False))
+                if self.instructions and (not cloud or share_instructions):
                     prompt["content"] += "\nKullanıcı tercihi: " + self.instructions
                 budget = max(0, (self.settings.context_tokens - self.settings.output_tokens) * 2
                              - len(prompt["content"].encode()) - len(user["content"].encode()) - 128)
                 notes = []
-                for note in reversed(self.memory.values()):
+                for note in (reversed(self.memory.values()) if not cloud or share_notes else ()):
                     cost = len(note.encode()) + 16
                     if cost <= min(budget // 3, 800):
                         notes.append(note)
@@ -340,13 +528,18 @@ class EonService:
                     context.append({"role": "user", "content": "Önceki mesajlarımdan alıntılar: " +
                                     " / ".join(reversed(earlier))})
                 messages = [prompt, *context, *history[start:end], user]
-                provider = self._provider()
+                provider: StreamingProvider = Gemini(secret(self.secret_path), cloud, self.settings.output_tokens) if cloud else self._provider()
+                model_used = cloud or self.settings.model
             job.check()
-            if emit:
+            if emit or cloud:
                 parts = []
                 def forward(part):
                     job.check()
-                    emit(part)
+                    nonlocal first_at
+                    if first_at is None:
+                        first_at = time.monotonic()
+                    if emit:
+                        emit(part)
                     parts.append(part)
                 provider.stream(messages, forward, job)
                 answer = "".join(parts).strip()
@@ -364,6 +557,9 @@ class EonService:
                 if end < count and history[end]["content"] == text.strip():
                     keep += 1
                 item["stars"] = [i for i in item["stars"] if i < keep]
+                self.metrics[ident] = {"model":model_used, "seconds":round(time.monotonic()-started, 2),
+                                       "first":round(first_at-started, 2) if first_at else None,
+                                       "rate":getattr(provider, "tokens_per_second", None), "time":int(time.time())}
                 del history[end:]
                 target.remember_turn(text, answer)
                 self.chats.rename_from_first_message(ident, text)
@@ -388,14 +584,22 @@ class EonService:
     def regenerate(self) -> dict:
         return self.generate()
 
-    def summary(self) -> dict:
+    def summary(self, chat_id=None, destination=None) -> dict:
         with self._generation_lock:
             with self._lock:
+                ident = self.chats.active_id
+                cloud = self.cloud_chats.get(ident)
+                if (chat_id is not None and ident != chat_id) or (destination is not None and destination != (cloud or "ollama")):
+                    raise ValueError("Sohbet veya sağlayıcı değişti.")
+                if cloud and ident not in self.cloud_allowed:
+                    raise ValueError("Önce bu Gemini sohbeti için aktarımı onayla.")
                 history = self.session.history()
                 if not history:
                     raise ValueError("Özetlenecek sohbet yok.")
-            self._require_model()
-            with self._lock:
+            if cloud:
+                provider = Gemini(secret(self.secret_path), cloud, self.settings.output_tokens)
+            else:
+                self._require_model()
                 provider = self._provider()
             # Summary is generated separately and never added to chat context.
             messages = [
@@ -404,7 +608,12 @@ class EonService:
                     f"{m['role']}: {m['content'][:1100]}" for m in history[-16:]
                 )[:12000]},
             ]
-            answer = provider.chat(messages)
+            if cloud:
+                parts = []
+                provider.stream(messages, parts.append, Generation())
+                answer = "".join(parts)
+            else:
+                answer = provider.chat(messages)
             with self._lock:
                 self.summaries += 1
                 return {"summary": answer, "state": self.snapshot()}

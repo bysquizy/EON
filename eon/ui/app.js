@@ -1,7 +1,14 @@
-/* EON v0.2.0 — same-origin client. No external APIs or analytics. */
+/* EON v0.3.0 — same-origin client. No external APIs or analytics. */
 'use strict';
 const el = id => document.getElementById(id);
 let csrfToken = '';
+const launchAccess = new URLSearchParams(location.hash.slice(1)).get('access');
+let sessionAccess = launchAccess || '';
+try {
+  if (launchAccess) sessionStorage.setItem('eon-access', launchAccess);
+  else sessionAccess = sessionStorage.getItem('eon-access') || '';
+} catch {}
+if (launchAccess) history.replaceState(null, '', location.pathname);
 let state = null;
 let installedModels = [];
 let apps = [];
@@ -41,6 +48,7 @@ async function request(path, body) {
   };
   let response;
   try {
+    options.headers = {...options.headers, 'X-EON-Access':sessionAccess};
     response = await fetch(path, options);
   } catch (error) {
     setConnectionLost(true);
@@ -53,7 +61,7 @@ async function request(path, body) {
   if (!response.ok) {
     if (response.status === 403) {
       setConnectionLost(true);
-      throw new Error('Oturum doğrulaması değişti. Yeniden bağlanmayı dene.');
+      throw new Error('EON terminalindeki tam başlatma bağlantısını kullan.');
     }
     throw new Error(result.error || 'İşlem tamamlanamadı.');
   }
@@ -110,6 +118,7 @@ function renderState(newState) {
   switchDraft(newState);
   state = newState;
   renderWorkspace();
+  renderHybrid();
   document.querySelectorAll('.storageStatus').forEach(node => node.textContent = state.storage);
   renderNotes();
   if (!el('view-settings').classList.contains('active-page')) fillPreferences();
@@ -362,7 +371,7 @@ async function summarize() {
   if (busy) return;
   setBusy(true, 'Sohbet özetleniyor...');
   try {
-    const result = await request('/api/summary', {});
+    const result = await request('/api/summary', {id:state.active_chat_id, destination:state.cloud_model || 'ollama'});
     renderState(result.state);
     showSummary(result.summary);
     showPage('chat');
@@ -386,7 +395,7 @@ function renderApps() {
     card.dataset.id = app.id;
     const icon = document.createElement('div');
     icon.className = 'app-icon';
-    icon.textContent = (app.name || '?').slice(0, 2).toUpperCase();
+    drawAppIcon(icon, app);
     const meta = document.createElement('div');
     meta.className = 'app-meta';
     const title = document.createElement('strong');
@@ -394,6 +403,7 @@ function renderApps() {
     const status = document.createElement('small');
     status.textContent = app.ready ? app.source === 'saved' ? 'Kaydedildi · Hazır' : 'Otomatik bulundu · Hazır' : 'Yol eklenmedi';
     meta.append(title, status);
+    if (app.path) { const path = document.createElement("small"); path.textContent = app.path; path.className = "launch-path"; meta.append(path); }
     const buttons = document.createElement('div');
     buttons.className = 'app-buttons';
     const open = document.createElement('button');
@@ -423,13 +433,17 @@ async function refreshApps() {
 async function launchApp(id) {
   // The only launch path is a direct click on the selected entry's Aç button.
   try {
-    await request('/api/apps/launch', {id});
+    const {target} = await request('/api/apps/target', {id});
+    if (!confirm('Bu uygulama açılsın mı?\n'+target)) return;
+    await request('/api/apps/launch', {id,target});
     const app = apps.find(item => item.id === id);
     toast((app?.name || 'Uygulama') + ' başlatma isteği Windows’a gönderildi.');
   } catch (error) { toast(error.message); }
 }
 
 function openAppModal(app) {
+  el('iconChoices').hidden = !app;
+  el('iconFile').value = '';
   editId = app?.id || 'custom_' + Math.random().toString(36).slice(2, 10);
   isCustom = !app;
   el('modalTitle').textContent = app ? app.name + ' · Uygulama yolu' : 'Uygulama ekle';
@@ -521,6 +535,7 @@ function wireEvents() {
 async function initialize() {
   wireEvents();
   wireLibrary();
+  wireHybrid();
   wireWorkspace();
   try {
     const boot = await request('/api/bootstrap');

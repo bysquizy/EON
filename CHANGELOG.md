@@ -1,5 +1,13 @@
 # Değişiklikler
 
+## v0.3.0
+
+- Yeni sohbet kenar çubuğu, kare bazlı akış güncellemesi ve hareket azaltma desteği.
+- İsteğe bağlı Gemini sohbetleri, ayrı DPAPI anahtar kasası ve paylaşım onayları.
+- Ollama model önbelleği, bekletme süresi, boşaltma ve sistem sağlığı.
+- İlk hava durumu kurulumu, yerel şehirler, uygulama simgeleri ve doğrulanan başlatma hedefi.
+- Özel GET erişimi ve eski şifreli kasa için geri dönüş kopyası.
+
 ## v0.2.0
 
 - Projeler, projeye özel yönergeler, dört hazır mod ve özel modlar.

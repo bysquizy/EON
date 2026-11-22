@@ -31,7 +31,8 @@ def forecast(consent, lat, lon):
             elif code in (51,53,55,56,57,61,63,65,66,67,80,81,82): label = "Yağışlı"
             else: label = f"Hava kodu {code}"
         date = datetime.fromtimestamp(record["time"], timezone.utc).astimezone()
-        return {"label": f"{temp:g} °C · {label} · {date:%d.%m %H:%M} · Open-Meteo"}
+        symbol = "☀" if code == 0 else "☁" if code <= 48 else "❄" if "Karlı" == label else "☂"
+        return {"label": f"{symbol} {temp:g} °C · {label} · {date:%d.%m %H:%M} · Open-Meteo"}
     except (OSError, HTTPException, ValueError, KeyError, TypeError, OverflowError):
         raise ValueError("Open-Meteo verisi alınamadı. İnternet bağlantısını kontrol et.") from None
     finally:

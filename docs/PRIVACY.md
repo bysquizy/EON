@@ -1,14 +1,13 @@
 # Gizlilik
 
-Sohbetler, başlıklar, elle kaydedilen notlar ve model tercihleri Windows'ta `%LOCALAPPDATA%\EON\library.dpapi` içinde kullanıcı hesabına bağlı olarak korunur. Geçici dosyaya da yalnız şifreli veri yazılır. Windows koruması veya kayıt başarısız olursa uygulama bellekte çalışır ve kayıt durumunu gösterir. Eski kasa korunur. Linux oturumları geçicidir.
+Ollama sohbetleri loopback üzerinden yerel modele gönderilir. EON kendi başına Google’a bağlanmaz. Google bağlantı testi API anahtarıyla model listesini ister. Karşılaştırma düğmesi onaydan sonra iki sağlayıcıya sabit bir aritmetik soru gönderir.
 
-Hafıza ekranına yalnız kullanıcının eklediği kayıtlar girer. Notlar model isteğine sığdıkları ölçüde dahil edilir. Modelle sohbet etmek, uygulama başlatma yetkisi vermez. Seçilen uygulama yolları aynı klasörde `applications.json` içinde saklanır.
+Gemini’ye geçerken ayrı bir bulut sohbeti oluşturulur. Gönderilen veri, bu sohbetin yeni mesajı, bütçeye sığan yakın geçmişi ve kısa sistem yönergesidir. Genel notlar ve özel yönergeler ayrı kutularla açılır. Proje yönergeleri ve diğer sohbetler kapsam dışındadır. Yeniden başlatmada bulut gönderim onayı sona erer. Sağlayıcı hatasında otomatik geçiş yapılmaz.
 
-Ollama çağrıları aynı bilgisayarda kalır. Hava durumu ayrı bir istektir. Ayarlar ekranında açık izin ve güncelleme eylemiyle girilen koordinatlar Open-Meteo’ya gönderilir. Servis bağlantının IP adresini de görür. Konum otomatik alınmaz. Hava durumu izni sekme yeniden açıldığında kapanır.
+Google’ın ücretsiz ve ücretli katmanlarında veri kullanımı ve kota koşulları farklı olabilir. Ücretsiz hizmetlerde girdiler ve çıktılar ürün geliştirmek için işlenebilir ve insan incelemesine konu olabilir. Bölgesel koşulları kendi hesabın için kontrol et. EON ödeme hesabı açmaz. [Google hizmet koşulları](https://ai.google.dev/gemini-api/terms) · [Fiyatlar](https://ai.google.dev/gemini-api/docs/pricing) · [Kota](https://ai.google.dev/gemini-api/docs/rate-limits)
 
-DPAPI aynı kullanıcı hesabıyla çalışan diğer yazılımlara karşı yalıtım sağlamaz. Tarayıcı, işletim sistemi, yedekler ve Ollama günlükleri kendi saklama kurallarına tabidir.
+Windows’ta sohbet ve tercih kasası `%LOCALAPPDATA%\EON\library.dpapi`, Google anahtarı ayrı `gemini.dpapi` dosyasındadır. API anahtarı maskeli yerel Windows penceresinden alınır ve Google’a HTTPS başlığında gönderilir. Şifreleme çalışmıyorsa düz metin kayıt yapılmaz. Linux’ta sohbetler oturum belleğindedir.
 
-Projeler, modlar, favoriler ve görünüm tercihleri de aynı şifreli kasaya dahildir.
-Sohbet taslakları yalnız açık sekmenin belleğindedir. Pano metni ancak **Panoyu oku ve taslağa al** düğmesiyle okunur.
-Metni inceleyip Gönder’e bastığında yerel modele iletilir. Markdown ve metin dışa aktarımları onaydan sonra
-tarayıcıda üretilir. İndirilen dosyalar düz metindir ve kullanıcı tarafından ayrıca korunmalıdır.
+Uygulama yolları yerel başlatıcı ayarlarında bulunur. Özel simgeler piksele dönüştürülüp sohbet kasasına kaydedilir. Pano yalnız düğmeye basıldığında okunur. Markdown ve TXT indirmeleri şifresizdir.
+
+Hava durumu kurulumunda şehir seçimi çevrimdışıdır. Kullanıcı izin verip güncel veriyi istediğinde seçtiği koordinatlar Open-Meteo’ya gönderilir. Tercih kasada saklanır. İzni kapatmak kayıtlı konumu kaldırır. EON arka planda konum aramaz.

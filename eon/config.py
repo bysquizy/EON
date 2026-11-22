@@ -37,8 +37,11 @@ class LocalSettings:
     context_tokens: int = 4096
     output_tokens: int = 320
     timeout_seconds: int = 180
+    keep_alive: str = "3m"
 
     def __post_init__(self) -> None:
+        if self.keep_alive not in ("0", "3m", "15m"):
+            raise ValueError("Geçersiz bekletme süresi.")
         if not valid_model(self.model):
             raise ValueError("Geçersiz veya bulut modeli.")
         if not 512 <= self.context_tokens <= 8192:

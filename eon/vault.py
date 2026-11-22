@@ -50,6 +50,21 @@ class Vault:
             self.guard.close()
             self.guard = None
 
+    def backup_legacy(self):
+        # Publish a complete encrypted rollback copy before the first schema upgrade.
+        target = self.path.with_suffix(".pre-v030.dpapi")
+        if target.exists():
+            return
+        fd, temp = tempfile.mkstemp(dir=self.path.parent)
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(self.path.read_bytes())
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp, target)
+        finally:
+            Path(temp).unlink(missing_ok=True)
+
     def save(self, data):
         encrypted = protect(json.dumps(data, ensure_ascii=False).encode())
         if len(encrypted) > 32 * 1024 * 1024:

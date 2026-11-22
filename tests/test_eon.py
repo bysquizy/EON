@@ -359,7 +359,7 @@ class HttpTests(unittest.TestCase):
         cls.temp.cleanup()
 
     def fetch(self, route, body=None, origin=None, token=None):
-        headers = {}
+        headers = {"X-EON-Access":self.server.access}
         if body is not None:
             headers['Content-Type'] = 'application/json'
             if origin is not None: headers['Origin'] = origin
@@ -372,7 +372,7 @@ class HttpTests(unittest.TestCase):
         with self.fetch('/api/bootstrap') as response:
             data = json.loads(response.read())
             self.assertEqual(len(data['token']) > 20, True)
-            self.assertEqual(data['state']['version'], '0.2.0')
+            self.assertEqual(data['state']['version'], '0.3.0')
             self.assertIn("connect-src 'self'", response.headers['Content-Security-Policy'])
 
     def test_html_rendered(self):

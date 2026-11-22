@@ -1,0 +1,58 @@
+/* EON görünüm katmanı — style.css'ten sonra yüklenir. Yalnız CSS değişkenleri ve mevcut sınıfları kullanır. */
+:root{--glass:rgba(14,22,48,.62);--r:14px;--ease:cubic-bezier(.2,.7,.2,1);--rail:288px}
+:root[data-theme=light]{--glass:rgba(255,255,255,.82)}
+:root[data-rail=min]{--rail:76px}
+.window{background:radial-gradient(900px 520px at 80% -8%,color-mix(in srgb,var(--accent) 16%,transparent),transparent 62%),radial-gradient(800px 600px at 6% 108%,rgba(96,84,230,.16),transparent 60%),var(--bg)}
+.topbar{padding:0 20px;gap:16px;background:var(--glass);backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}
+.brand{font-size:22px;gap:11px}#railToggle{width:36px;height:36px;border-radius:10px}#railToggle:hover{background:color-mix(in srgb,var(--accent) 14%,transparent)}
+/* Kenar çubuğu */
+.main-layout{grid-template-columns:var(--rail) minmax(0,1fr);transition:grid-template-columns .25s var(--ease)}
+.sidebar{align-items:stretch;padding:14px 12px;gap:4px;overflow:hidden;background:var(--glass)}
+.nav-button{display:flex;align-items:center;justify-content:flex-start;gap:12px;width:100%;height:44px;padding:0 13px;border-radius:12px;font-size:14px;color:var(--soft)}
+.nav-button svg{width:20px;height:20px;flex:none}.nav-button::after{content:attr(title);white-space:nowrap}
+.nav-divider{width:100%;margin:8px 0 2px}.sidebar-bottom{margin-top:0;padding:8px 6px 0}
+#chatRail{flex:1;min-height:0;display:flex;flex-direction:column;gap:2px;overflow-y:auto;scrollbar-width:thin}
+#chatRail h6{margin:12px 8px 4px;font-size:10px;font-weight:600;letter-spacing:.14em;color:var(--sub)}
+.rail-item{display:block;width:100%;padding:9px 11px;border:0;border-radius:10px;background:none;color:var(--soft);font-size:13px;text-align:left;transition:background .15s,color .15s}
+.rail-item span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rail-item:hover{background:color-mix(in srgb,var(--accent) 10%,transparent);color:var(--text)}
+.rail-item.on{background:color-mix(in srgb,var(--accent) 18%,transparent);color:var(--text)}
+:root[data-rail=min] .nav-button{justify-content:center;padding:0}
+:root[data-rail=min] .nav-button::after,:root[data-rail=min] #chatRail,:root[data-rail=min] .sidebar-bottom{display:none}
+/* Mesajlar */
+.chat-log{gap:22px;padding:28px 6px 44px}
+.msg.user{max-width:72%}
+.msg.user .bubble{background:color-mix(in srgb,var(--accent) 20%,transparent);border-color:color-mix(in srgb,var(--accent) 38%,transparent);border-radius:18px 18px 4px 18px}
+.msg.assistant{max-width:100%;width:100%}
+.msg.assistant .bubble{position:relative;background:none;border:0;padding:2px 0 0 46px;line-height:1.72}
+.msg.assistant .bubble::before{content:"";position:absolute;left:0;top:0;width:32px;height:32px;border-radius:11px;background:linear-gradient(135deg,var(--accent),#7a6cff);box-shadow:0 0 18px color-mix(in srgb,var(--accent) 45%,transparent)}
+.pending-answer .bubble::before{animation:eonpulse 1.2s ease-in-out infinite}
+@keyframes eonpulse{50%{opacity:.45;transform:scale(.92)}}
+.msg.assistant .reply-actions{padding-left:46px}
+.reply-actions{opacity:0;transition:opacity .15s}.msg:hover .reply-actions,.msg:focus-within .reply-actions,.msg:last-child .reply-actions{opacity:1}
+@media(hover:none){.reply-actions{opacity:1}}
+.bubble pre{margin:0 0 12px;padding:14px 16px;background:#050b17;border:1px solid var(--line);border-radius:12px 0 12px 12px;font:13px/1.6 "Cascadia Code",Consolas,monospace}
+.bubble>.text-button{display:block;margin:10px 0 0 auto;padding:3px 10px;font-size:11px;border:1px solid var(--line);border-bottom:0;border-radius:8px 8px 0 0}
+/* Yazma alanı */
+.composer{min-height:64px;border-radius:22px;background:var(--glass);border-color:var(--line-strong);box-shadow:0 12px 40px rgba(0,0,0,.28);transition:box-shadow .2s,border-color .2s}
+.composer:focus-within{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent),0 12px 40px rgba(0,0,0,.28)}
+.composer textarea{max-height:160px}.send-button{width:46px;height:46px;border-radius:14px}
+.composer-footer{align-items:center}#ctxMeter{display:inline-flex;align-items:center;gap:8px;margin-right:14px}#ctxMeter em{font-style:normal}
+#ctxMeter i{display:block;width:72px;height:4px;border-radius:4px;background:var(--line);overflow:hidden}#ctxMeter b{display:block;height:100%;background:var(--accent);transition:width .3s}
+#ctxMeter.warn b{background:#f0b35c}.composer-footer>span:last-child{display:flex;align-items:center}
+#toBottom{position:absolute;z-index:4;left:50%;bottom:112px;transform:translateX(-50%);display:grid;place-items:center;width:38px;height:38px;border-radius:50%;border:1px solid var(--line-strong);background:var(--panel);color:var(--text);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+/* Kartlar, hoş geldin, pencereler */
+.settings-card,.app-card,.conversation-row{background:var(--glass);backdrop-filter:blur(10px);border-radius:var(--r);transition:border-color .2s,transform .2s}
+.settings-card:hover,.app-card:hover{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}.app-card:hover{transform:translateY(-2px)}
+.suggestions button{border-radius:var(--r);padding:14px 18px}
+dialog{border-radius:18px;box-shadow:0 30px 90px rgba(0,0,0,.5)}dialog::backdrop{backdrop-filter:blur(6px)}
+@media(max-width:1100px){:root{--rail:76px}.nav-button{justify-content:center;padding:0}.nav-button::after,#chatRail,.sidebar-bottom{display:none}}
+@media(max-width:620px){:root{--rail:56px}.msg.user{max-width:90%}.msg.assistant .bubble{padding-left:0;padding-top:40px}.reply-actions,.msg.assistant .reply-actions{padding-left:0}#ctxMeter i{width:40px}}
+
+.app-icon canvas { width:100%;height:100%;object-fit:contain; }
+.launch-path { overflow-wrap:anywhere;max-width:100%;font-size:11px; }
+#weatherWelcome { pointer-events:auto; font-size:13px;line-height:1.5;margin-top:12px; }
+#weatherWelcome[hidden] { display:none; }
+#providerBadge { overflow-wrap:anywhere; }
+.settings-card button { margin:3px 2px; }
+@media(max-width:1100px) { #railToggle { display:none; } }
