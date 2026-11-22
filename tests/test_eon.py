@@ -231,7 +231,10 @@ class LauncherTests(unittest.TestCase):
 
     def test_unconfigured_launch_denied(self):
         with tempfile.TemporaryDirectory() as d:
-            apps = ApplicationRegistry(config_path=Path(d)/'apps.json', platform='win32')
+            # Keep CI independent of installed Start Menu applications.
+            with patch.object(ApplicationRegistry, 'refresh', return_value=None):
+                apps = ApplicationRegistry(config_path=Path(d)/'apps.json', platform='win32')
+            apps._discovered.clear()
             with self.assertRaises(LaunchError): apps.launch('chrome')
 
     def test_non_windows_denied(self):
