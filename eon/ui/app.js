@@ -1,4 +1,4 @@
-/* EON v0.1.0 — same-origin client. No external APIs or analytics. */
+/* EON v0.2.0 — same-origin client. No external APIs or analytics. */
 'use strict';
 const el = id => document.getElementById(id);
 let csrfToken = '';
@@ -12,6 +12,13 @@ let toastTimeout = null;
 let disconnected = false;
 
 function toast(message) {
+  const opened = document.querySelector('dialog[open]');
+  if (opened) {
+    let feedback = opened.querySelector('[role=status]');
+    if (!feedback) { feedback = document.createElement('p'); feedback.setAttribute('role','status'); opened.append(feedback); }
+    feedback.textContent = String(message);
+    return;
+  }
   const box = el('toast');
   box.textContent = String(message);
   box.classList.remove('hidden');
@@ -100,7 +107,9 @@ function showPage(name) {
 }
 
 function renderState(newState) {
+  switchDraft(newState);
   state = newState;
+  renderWorkspace();
   document.querySelectorAll('.storageStatus').forEach(node => node.textContent = state.storage);
   renderNotes();
   if (!el('view-settings').classList.contains('active-page')) fillPreferences();
@@ -123,6 +132,7 @@ function renderChat() {
   log.replaceChildren();
   history.forEach((entry, index) => {
     const msg = document.createElement('div');
+    msg.dataset.index = index;
     msg.className = 'msg ' + (entry.role === 'user' ? 'user' : 'assistant');
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
@@ -131,6 +141,10 @@ function renderChat() {
     msg.appendChild(bubble);
     const tools = document.createElement('div');
     tools.className = 'reply-actions';
+    const starred = state.stars.includes(index);
+    const chatId = state.active_chat_id, revision = state.revision;
+    tools.append(action(starred ? '★ Favoride' : '☆ Favori', () =>
+      library('star', {id:chatId, index, revision, on:!starred})));
     tools.append(action('Kopyala', () => navigator.clipboard.writeText(entry.content)));
     if (entry.role === 'user') tools.append(action('Düzenle', async () => {
       if (busy) return;
@@ -155,10 +169,16 @@ function renderChat() {
 }
 
 function renderHistory() {
+  const query = el('chatSearch').value.trim();
+  const selected = el('projectFilter').value;
+  if (query || el('favoritesOnly').checked || selected !== '*') {
+    scheduleSearch(query, selected);
+    return;
+  }
+  cancelSearch();
   const root = el('historyList');
   root.replaceChildren();
-  const query = el('chatSearch').value.trim().toLocaleLowerCase('tr');
-  const conversations = (state?.conversations || []).filter(c => c.title.toLocaleLowerCase('tr').includes(query));
+  const conversations = [...(state?.conversations || [])].sort((a,b) => Number(b.pinned)-Number(a.pinned));
   if (!conversations.length) {
     const empty = document.createElement('div');
     empty.className = 'empty-hint';
@@ -173,7 +193,7 @@ function renderHistory() {
     open.type = 'button';
     open.className = 'conversation-open';
     const name = document.createElement('strong');
-    name.textContent = chat.title;
+    name.textContent = (chat.pinned ? '★ ' : '') + chat.title;
     const meta = document.createElement('small');
     meta.textContent = chat.message_count ? chat.message_count + ' mesaj' : 'Boş sohbet';
     open.append(name, meta);
@@ -184,7 +204,8 @@ function renderHistory() {
     remove.textContent = 'Sil';
     remove.setAttribute('aria-label', chat.title + ' sohbetini sil');
     remove.addEventListener('click', () => deleteChat(chat.id));
-    row.append(open, action('Adlandır', async () => {
+    row.append(open, action(chat.pinned ? 'Sabitlemeyi kaldır' : 'Sabitle',
+      () => library('pin', {id:chat.id, on:!chat.pinned})), action('Adlandır', async () => {
       const title = prompt('Sohbet adı', chat.title);
       if (title?.trim()) renderState(await request('/api/chats/rename', {id: chat.id, title}));
     }), remove);
@@ -362,6 +383,7 @@ function renderApps() {
   apps.forEach(app => {
     const card = document.createElement('div');
     card.className = 'app-card';
+    card.dataset.id = app.id;
     const icon = document.createElement('div');
     icon.className = 'app-icon';
     icon.textContent = (app.name || '?').slice(0, 2).toUpperCase();
@@ -499,6 +521,7 @@ function wireEvents() {
 async function initialize() {
   wireEvents();
   wireLibrary();
+  wireWorkspace();
   try {
     const boot = await request('/api/bootstrap');
     csrfToken = boot.token;

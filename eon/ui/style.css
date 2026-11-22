@@ -40,3 +40,35 @@
 .msg { min-width:0; } .bubble code { color:#b6e3ff; }
 .pending-answer .bubble:empty::after { content:'…'; }
 @media(max-width:620px) { .ambient {font-size:11px} .top-status {max-width:85px} .topbar{gap:8px} .conversation-row {flex-wrap:wrap} }
+
+dialog { width:min(32rem,calc(100vw - 2rem)); max-height:80dvh; overflow:auto; padding:1.25rem;
+  color:var(--text); background:var(--panel); border:1px solid var(--accent); border-radius:16px; }
+dialog::backdrop { background:rgba(3,9,20,.68); }
+dialog header,.filters { display:flex; align-items:center; gap:.7rem; flex-wrap:wrap; margin-bottom:.85rem; }
+dialog header { justify-content:space-between; } dialog h2 { margin:0; font-size:1.22rem; }
+dialog label { display:block; margin-top:.75rem; } dialog textarea { min-height:6rem; }
+dialog button,.search-hit { color:var(--text); background:var(--panel); border:1px solid var(--line);
+  border-radius:8px; padding:.55rem .75rem; margin:.15rem; }
+#commandResults,.search-hit { display:grid; text-align:left; } #commandResults button { text-align:left; }
+#commandResults button:focus,.search-hit:focus { outline:2px solid var(--accent); }
+.search-hit small { color:var(--soft); overflow-wrap:anywhere; } #chatOptions { max-width:40vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+:root[data-accent=mint] { --accent:#78dabb; } :root[data-accent=violet] { --accent:#baa6ff; }
+:root[data-theme=light] { color-scheme:light; --bg:#f4f7fb; --panel:#fff; --text:#182f47; --soft:#465a70;
+  --sub:#455a72; --accent:#23628c; --line:#b9c9d5; --line-strong:#8098ac; }
+:root[data-theme=light][data-accent=mint] { --accent:#136950; }
+:root[data-theme=light][data-accent=violet] { --accent:#69469a; }
+:root[data-theme=light] :is(.window,.sidebar,.content-page,.chat-page) { background:var(--bg); color:var(--text); }
+:root[data-theme=light] :is(.composer,.settings-card,.app-card,.modal,.conversation-row,.bubble,.summary-panel,.note-row,.field,.segmented,.version,.toast,button,select,input,textarea) {
+  background:var(--panel); color:var(--text); border-color:var(--line); }
+:root[data-theme=light] :is(.welcome h1,.welcome p,.ambient,.brand,.eyebrow,.nav-button,.composer-footer,.composer-footer span,.page-heading p,.subtle-note,.reply-actions button,.top-status,.inline-link,.app-footer,.app-meta small,.settings-card label,.suggestions button,.conversation-open,.app-icon,.stats-grid span,.note-small) { color:var(--soft); }
+:root[data-theme=light] .welcome h1 { -webkit-text-fill-color:var(--text); }
+:root[data-theme=light] .bubble pre { background:#eaf0f6; } :root[data-theme=light] .bubble code { color:#23455e; }
+:root .nav-button.selected,:root .segmented button.selected { color:var(--accent); border:1px solid var(--accent); }
+:root .send-button { background:var(--accent); color:#091827; }
+:root[data-theme=light] .send-button { color:#fff; }
+:root[data-compact=true] .settings-card { padding:14px; min-height:0; }
+:root[data-compact=true] .conversation-row { padding:4px 8px; min-height:48px; }
+:root[data-compact=true] .chat-log { gap:6px; } :root[data-compact=true] .bubble { padding:7px 11px; }
+:root[data-reduced=true] *, :root[data-reduced=true] *::after { animation:none!important; transition:none!important; scroll-behavior:auto!important; }
+@media(max-width:650px) { #commandOpen { padding:.35rem; font-size:11px; } #commandOpen kbd {display:none}
+  .topbar {padding:0 8px;} .chat-top-actions {flex-wrap:wrap;} .filters select {max-width:150px;} }

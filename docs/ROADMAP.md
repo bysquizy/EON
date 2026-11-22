@@ -7,7 +7,8 @@ EON küçük, güvenilir ve test edilebilir sürümler halinde gelişiyor.
 | v0.0.1 | Yayınlandı | Yerel model ve terminal sohbeti |
 | v0.0.2 | Yayınlandı | Web arayüzü, sohbet araçları ve uygulama açma |
 | v0.0.3 | Yayınlandı | Sohbet listeleri, kısayollar ve bağlantı düzeltmeleri |
-| v0.1.0 | Ön sürüm | Windows şifreli kayıt, seçici hafıza ve akışlı sohbet |
+| v0.1.0 | Yayınlandı | Windows şifreli kayıt, seçici hafıza ve akışlı sohbet |
+| v0.2.0 | Ön sürüm | Projeler, çalışma modları, komut paleti ve yerel arama |
 
 Sonraki hedefler arasında çevrimdışı ses ve imzalı Windows yükleyicisi bulunur.
 

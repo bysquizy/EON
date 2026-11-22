@@ -59,18 +59,23 @@ class ConversationCollection:
         self.active_id = ""
         self.new()
 
+    @staticmethod
+    def metadata():
+        return {"project": "", "mode": "general", "pinned": False, "stars": [], "revision": 0}
+
     def new(self) -> str:
         import secrets
         if len(self._items) >= self.max_chats:
             raise ValueError("Sohbet sınırına ulaşıldı. Kullanılmayan bir sohbeti sil.")
         ident = secrets.token_urlsafe(9)
-        self._items[ident] = {"title": "Yeni sohbet", "session": VolatileSession()}
+        self._items[ident] = {"title": "Yeni sohbet", "session": VolatileSession(), **self.metadata()}
         self.active_id = ident
         return ident
 
     def dump(self):
         return {"active": self.active_id, "items": [
-            [key, item["title"], item["session"]._history] for key, item in self._items.items()]}
+            [key, item["title"], item["session"]._history] for key, item in self._items.items()],
+                "metadata": {key: {k: item[k] for k in self.metadata()} for key, item in self._items.items()}}
 
     def restore(self, data):
         items = {}
@@ -80,7 +85,13 @@ class ConversationCollection:
             for i, entry in enumerate(history):
                 if entry["role"] != ("user", "assistant")[i % 2] or not isinstance(entry["content"], str):
                     raise ValueError("Geçersiz mesaj.")
-            items[key] = {"title": title, "session": VolatileSession(_history=history)}
+            meta = data.get("metadata", {}).get(key, self.metadata())
+            if (not isinstance(meta, dict) or set(meta) != set(self.metadata())
+                    or type(meta["pinned"]) != bool or type(meta["revision"]) != int
+                    or not isinstance(meta["stars"], list)
+                    or any(type(i) != int or not 0 <= i < len(history) for i in meta["stars"])):
+                raise ValueError("Sohbet ayarları geçersiz.")
+            items[key] = {"title": title, "session": VolatileSession(_history=history), **meta}
         if data["active"] not in items or len(items) > self.max_chats:
             raise ValueError("Geçersiz sohbet koleksiyonu.")
         self._items, self.active_id = items, data["active"]
@@ -100,7 +111,8 @@ class ConversationCollection:
 
     def list(self) -> list[dict]:
         return [
-            {"id": ident, "title": item["title"],
+            {"id": ident, "title": item["title"], "project": item["project"],
+             "mode": item["mode"], "pinned": item["pinned"],
              "message_count": len(item["session"]._history) // 2}
             for ident, item in reversed(list(self._items.items()))
         ]

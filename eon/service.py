@@ -4,6 +4,7 @@ import threading
 import time
 import secrets
 from .vault import Vault
+from .workspace import Workspace, check_text, fold
 
 from .config import DEFAULT_MODEL, LocalSettings, OUTPUT_LIMITS, STYLE_GUIDANCE, SYSTEM_PROMPT
 from .provider import LocalModelError, LocalOllama
@@ -54,6 +55,7 @@ class EonService:
         self.jobs = {}
         self.memory = {}
         self.instructions = ""
+        self.workspace = Workspace()
         self.vault = None
         self.storage_notice = "Yalnızca bu oturumda saklanır."
         if vault_path:
@@ -61,21 +63,32 @@ class EonService:
             try:
                 data = candidate.open()
                 if data is not None:
-                    self.chats.restore(data["chats"])
+                    if not isinstance(data, dict):
+                        raise ValueError("Kasa kaydı geçersiz.")
+                    schema = data.get("schema", 1)
+                    if schema not in (1, 2):
+                        raise ValueError("Kasa sürümü desteklenmiyor.")
+                    library, chats = Workspace(), ConversationCollection()
+                    if schema == 2:
+                        library.restore(data["workspace"])
+                    chats.restore(data["chats"])
+                    for item in chats._items.values():
+                        library.configure(item, item["project"], item["mode"])
+                    self.workspace, self.chats = library, chats
                     self.memory = data["memory"]
                     self.instructions = data["instructions"]
                     self.settings = LocalSettings(**data["settings"])
                     self.style = data["style"]
                 self.vault = candidate
                 self.storage_notice = "Windows hesabınla şifrelenerek kaydedilir."
-            except (ImportError, OSError, ValueError, TypeError, KeyError):
+            except (ImportError, OSError, ValueError, TypeError, KeyError, AttributeError):
                 candidate.close()
                 self.storage_notice = "Şifreli kayıt açılamadı. Bu oturum yalnız bellekte tutulur."
 
     def _save(self):
         if self.vault:
             try:
-                self.vault.save({"chats": self.chats.dump(), "memory": self.memory,
+                self.vault.save({"schema": 2, "workspace": self.workspace.dump(), "chats": self.chats.dump(), "memory": self.memory,
                                  "instructions": self.instructions, "settings": vars(self.settings),
                                  "style": self.style})
             except (ValueError, OSError):
@@ -104,6 +117,67 @@ class EonService:
                 raise ValueError("En fazla 32 kayıt ve kayıt başına 400 karakter kullanılabilir.")
             self._save()
             return self.snapshot()
+
+    def library_action(self, kind, data):
+        with self._lock:
+            items = self.chats._items
+            if kind in ("project", "mode"):
+                if data.get("id") and any(items.get(job.chat_id, {}).get(kind) == data["id"]
+                                          for job in self.jobs.values()):
+                    raise ValueError("Bu kaydı değiştirmeden önce yanıtı durdur.")
+                self.workspace.update(kind, data, items)
+            elif kind == "look":
+                self.workspace.appearance(data)
+            else:
+                ident = data.get("id")
+                if not isinstance(ident, str) or ident not in items:
+                    raise ValueError("Sohbet bulunamadı.")
+                item = items[ident]
+                if kind == "configure":
+                    if any(job.chat_id == ident for job in self.jobs.values()):
+                        raise ValueError("Sohbet ayarlarını değiştirmeden önce yanıtı durdur.")
+                    self.workspace.configure(item, data.get("project"), data.get("mode"))
+                elif kind == "pin" and type(data.get("on")) == bool:
+                    item["pinned"] = data["on"]
+                elif kind == "star" and type(data.get("on")) == bool:
+                    index = data.get("index")
+                    if (type(index) != int or not 0 <= index < len(item["session"]._history)
+                            or data.get("revision") != item["revision"]):
+                        raise ValueError("Mesaj değişti, sohbeti yeniden aç.")
+                    stars = set(item["stars"])
+                    if data["on"]:
+                        stars.add(index)
+                    else:
+                        stars.discard(index)
+                    item["stars"] = sorted(stars)
+                else:
+                    raise ValueError("Geçersiz işlem.")
+            self._save()
+            return self.snapshot()
+
+    def search(self, query, favorites=False, project=None):
+        query = fold(check_text(query, 160, False))
+        if type(favorites) != bool or (project is not None and not isinstance(project, str)):
+            raise ValueError("Arama filtresi geçersiz.")
+        results = []
+        with self._lock:
+            for chat in sorted(self.chats.list(), key=lambda c: not c["pinned"]):
+                item = self.chats._items[chat["id"]]
+                if project is not None and item["project"] != project:
+                    continue
+                if (not favorites or item["pinned"]) and query in fold(chat["title"]):
+                    results.append({**chat, "index": None, "snippet": ""})
+                indices = item["stars"] if favorites else range(len(item["session"]._history)) if query else ()
+                for i in indices:
+                    content = item["session"]._history[i]["content"]
+                    pos = fold(content).find(query)
+                    if pos >= 0:
+                        results.append({**chat, "index": i, "snippet": content[max(0,pos-30):pos+100]})
+                    if len(results) >= 100:
+                        break
+                if len(results) >= 100:
+                    break
+        return {"results": results[:100]}
 
     def rename(self, ident, title):
         with self._lock:
@@ -138,7 +212,10 @@ class EonService:
     def snapshot(self) -> dict:
         with self._lock:
             history = self.session.history()
-            return {"version": "0.1.0", "history": history,
+            item = self.chats._items[self.chats.active_id]
+            return {"projects": self.workspace.projects.copy(), "modes": self.workspace.modes(),
+                    "look": self.workspace.look.copy(), "stars": item["stars"][:], "revision": item["revision"],
+                    "version": "0.2.0", "history": history,
                     "conversations": self.chats.list(),
                     "active_chat_id": self.chats.active_id,
                     "style": self.style, "model": self.settings.model,
@@ -229,6 +306,7 @@ class EonService:
                     end = count - 2
                 messages = target.messages_for(text, self.style)
                 prompt, user = messages[0], messages[-1]
+                prompt["content"] += "\n" + self.workspace.guidance(item)
                 if self.instructions:
                     prompt["content"] += "\nKullanıcı tercihi: " + self.instructions
                 budget = max(0, (self.settings.context_tokens - self.settings.output_tokens) * 2
@@ -280,6 +358,12 @@ class EonService:
                     raise ValueError("Sohbet değişti veya model boş yanıt verdi.")
                 if len(history) >= 1024 and end == count:
                     raise ValueError("Bu sohbetin sınırına ulaşıldı. Yeni sohbet aç.")
+                item["revision"] += 1
+                # Regenerating preserves the favorite on its unchanged user message.
+                keep = end
+                if end < count and history[end]["content"] == text.strip():
+                    keep += 1
+                item["stars"] = [i for i in item["stars"] if i < keep]
                 del history[end:]
                 target.remember_turn(text, answer)
                 self.chats.rename_from_first_message(ident, text)
@@ -330,6 +414,9 @@ class EonService:
             for job in self.jobs.values():
                 if getattr(job, "chat_id", None) == self.chats.active_id:
                     job.cancel()
+            item = self.chats._items[self.chats.active_id]
+            item["stars"].clear()
+            item["revision"] += 1
             self.chats.clear_current()
             self._save()
             return self.snapshot()

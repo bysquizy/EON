@@ -7,3 +7,8 @@ Hafıza ekranına yalnız kullanıcının eklediği kayıtlar girer. Notlar mode
 Ollama çağrıları aynı bilgisayarda kalır. Hava durumu ayrı bir istektir. Ayarlar ekranında açık izin ve güncelleme eylemiyle girilen koordinatlar Open-Meteo’ya gönderilir. Servis bağlantının IP adresini de görür. Konum otomatik alınmaz. Hava durumu izni sekme yeniden açıldığında kapanır.
 
 DPAPI aynı kullanıcı hesabıyla çalışan diğer yazılımlara karşı yalıtım sağlamaz. Tarayıcı, işletim sistemi, yedekler ve Ollama günlükleri kendi saklama kurallarına tabidir.
+
+Projeler, modlar, favoriler ve görünüm tercihleri de aynı şifreli kasaya dahildir.
+Sohbet taslakları yalnız açık sekmenin belleğindedir. Pano metni ancak **Panoyu oku ve taslağa al** düğmesiyle okunur.
+Metni inceleyip Gönder’e bastığında yerel modele iletilir. Markdown ve metin dışa aktarımları onaydan sonra
+tarayıcıda üretilir. İndirilen dosyalar düz metindir ve kullanıcı tarafından ayrıca korunmalıdır.

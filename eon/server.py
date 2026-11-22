@@ -16,6 +16,7 @@ ASSET_DIR = Path(__file__).parent / "ui"
 ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/style.css": ("style.css", "text/css; charset=utf-8"),
+    "/workspace.js": ("workspace.js", "application/javascript; charset=utf-8"),
     "/chat.js": ("chat.js", "application/javascript; charset=utf-8"),
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
 }
@@ -81,7 +82,7 @@ class EonHandler(BaseHTTPRequestHandler):
                                     "models": self.server.service.models(),
                                     "apps": self.server.service.launcher.list_apps()})
         if path == "/api/health":
-            return self._json(200, {"status": "ok", "version": "0.1.0"})
+            return self._json(200, {"status": "ok", "version": "0.2.0"})
         if path == "/api/state":
             return self._json(200, self.server.service.snapshot())
         if path == "/api/models":
@@ -134,6 +135,10 @@ class EonHandler(BaseHTTPRequestHandler):
                 return
             elif route == "/api/stop":
                 result = service.cancel(payload.get("key"))
+            elif route == "/api/search":
+                result = service.search(payload.get("query", ""), payload.get("favorites", False), payload.get("project"))
+            elif route in {"/api/library/" + kind for kind in ("project", "mode", "look", "configure", "pin", "star")}:
+                result = service.library_action(route.rsplit("/", 1)[1], payload)
             elif route == "/api/weather":
                 from .weather import forecast
                 result = forecast(payload.get("consent"), payload.get("lat"), payload.get("lon"))

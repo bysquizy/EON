@@ -22,6 +22,8 @@ function markdown(root, text) {
       else {
         const pre = document.createElement('pre');
         code = document.createElement('code');
+        const block = code;
+        root.append(action('Kodu kopyala', () => navigator.clipboard.writeText(block.textContent.replace(/\n$/, ''))));
         pre.append(code);
         root.append(pre);
       }
@@ -155,7 +157,7 @@ function wireLibrary() {
   window.addEventListener('online', () => { if (disconnected) reconnect(); });
   document.addEventListener('keydown', e => {
     if (e.ctrlKey && e.altKey && e.code === 'KeyN') { e.preventDefault(); newChat(); }
-    if (e.key === 'Escape' && activeStream) el('stop').click();
+    if (e.key === 'Escape' && activeStream && !document.querySelector('dialog[open]')) el('stop').click();
   });
   let weatherVersion = 0;
   el('weatherConsent').onchange = () => {

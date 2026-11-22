@@ -7,6 +7,7 @@
   <title>EON — Yerel Asistan</title>
   <link rel="stylesheet" href="/style.css">
   <script defer src="/chat.js"></script>
+  <script defer src="/workspace.js"></script>
   <script defer src="/app.js"></script>
 </head>
 <body>
@@ -27,7 +28,8 @@
   </svg>
   <div class="window">
     <header class="topbar">
-      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.1.0</span></div>
+      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.2.0</span></div>
+      <button id="commandOpen" class="outline-button" aria-haspopup="dialog" title="Komut Merkezi (Ctrl+K)">Komutlar <kbd>Ctrl K</kbd></button>
       <div class="ambient"><time id="clock"></time><span id="forecast">Hava durumu kapalı</span></div>
       <div class="top-status" id="connection"><span class="status-dot"></span><span id="connectionText">Bağlanıyor...</span></div>
     </header>
@@ -50,6 +52,7 @@
         <section class="page chat-page active-page" id="view-chat" aria-label="Sohbet">
           <div class="planet" aria-hidden="true"></div>
           <div class="chat-top-actions" id="chatActions">
+            <button class="text-button" id="chatOptions" aria-haspopup="dialog">Sohbet seçenekleri</button>
             <button type="button" class="text-button" id="summaryButton">Sohbeti özetle</button>
             <button type="button" class="text-button" id="clearButton">Temizle</button>
           </div>
@@ -84,7 +87,9 @@
         </section>
         <section class="page content-page" id="view-history" aria-label="Geçmiş">
           <div class="page-heading"><div><p class="eyebrow">SOHBETLER</p><h2>Sohbet geçmişi</h2><p>Bir sohbete tıklayıp içeriğini açabilirsin. <span class="storageStatus"></span></p></div><button type="button" class="outline-button" id="newChatInHistory"><svg><use href="#i-plus"/></svg> Yeni sohbet</button></div>
-          <input class="field" id="chatSearch" type="search" aria-label="Başlığa göre sohbet ara" placeholder="Başlığa göre ara">
+          <input class="field" id="chatSearch" type="search" maxlength="160" aria-label="Sohbet ve mesaj ara" placeholder="Başlık veya mesaj ara">
+          <div class="filters"><label>Proje <select id="projectFilter"></select></label>
+            <label><input type="checkbox" id="favoritesOnly"> Yalnız favoriler</label></div>
           <div class="history-list" id="historyList"></div>
         </section>
         <section class="page content-page" id="view-memory" aria-label="Hafıza">
@@ -97,6 +102,14 @@
         <section class="page content-page" id="view-settings" aria-label="Ayarlar">
           <div class="page-heading"><div><p class="eyebrow">KONTROL</p><h2>Ayarlar</h2><p>EON'u kullanmak istediğin gibi ayarla.</p></div></div>
           <div class="settings-grid">
+            <div class="settings-card"><h3>Projeler ve modlar</h3>
+              <button class="outline-button" id="manageProjects">Projeleri yönet</button>
+              <button class="outline-button" id="manageModes">Modları yönet</button></div>
+            <div class="settings-card"><h3>Görünüm</h3>
+              <label>Tema <select id="theme"><option value="dark">Koyu</option><option value="light">Açık</option></select></label>
+              <label>Vurgu <select id="accent"><option value="ice">Buz mavisi</option><option value="mint">Nane</option><option value="violet">Menekşe</option></select></label>
+              <label><input id="compact" type="checkbox"> Kompakt görünüm</label>
+              <label><input id="reduced" type="checkbox"> Hareketi azalt</label></div>
             <div class="settings-card"><h3>Model tercihleri</h3>
               <label>Özel yönergeler<textarea id="instructions" class="field" maxlength="600"></textarea></label>
               <label>Bağlam (token)<input class="field" id="contextLimit" type="number" min="512" max="8192"></label>
@@ -126,5 +139,9 @@
       </div>
     </div>
   </div>
+  <dialog id="commandDialog" aria-labelledby="commandTitle"><header><h2 id="commandTitle">Komut Merkezi</h2><button type="button" data-close>Kapat</button></header>
+    <input id="commandQuery" class="field" placeholder="Komut, sohbet, model veya uygulama ara" aria-label="Komut ara" autocomplete="off">
+    <div id="commandResults"></div></dialog>
+  <dialog id="libraryDialog" aria-labelledby="libraryTitle"><header><h2 id="libraryTitle"></h2><button type="button" data-close>Kapat</button></header><div id="libraryBody"></div></dialog>
 </body>
 </html>

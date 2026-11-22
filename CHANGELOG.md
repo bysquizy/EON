@@ -1,5 +1,14 @@
 # Değişiklikler
 
+## v0.2.0
+
+- Projeler, projeye özel yönergeler, dört hazır mod ve özel modlar.
+- Ctrl+K komut paleti, mesaj içeriği araması, sabitlenmiş sohbetler ve favori mesajlar.
+- İzinli pano yardımcısı, yerel Markdown ve metin indirmeleri.
+- Açık tema, vurgu renkleri, kompakt görünüm ve azaltılmış hareket.
+- Sekme içi sohbet taslakları ve kod bloğunu tek tıkla kopyalama.
+- v0.1.0 şifreli kasalarını okuyan geriye uyumlu yükleme.
+
 ## v0.1.0
 
 - Sohbet yanıtları için akış, iptal, mesaj düzenleme ve temel Markdown görünümü.

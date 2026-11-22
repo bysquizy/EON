@@ -1,16 +1,16 @@
 # EON'u Windows'ta çalıştırmak
 
-EON v0.1.0, Python ile çalışan yerel bir tarayıcı uygulamasıdır. Henüz `.exe` kurulum dosyası yoktur.
+EON v0.2.0, Python ile çalışan yerel bir tarayıcı uygulamasıdır. Henüz `.exe` kurulum dosyası yoktur.
 
 ### Kurulum
 
 1. [Python 3.10+](https://www.python.org/downloads/windows/) ve [Ollama](https://ollama.com/download/windows) kur.
 2. Windows kullanıcı ortam değişkenlerinden `OLLAMA_NO_CLOUD=1` ve `OLLAMA_HOST=127.0.0.1:11434` değerlerini ayarla. Ollama'yı tamamen kapatıp yeniden aç.
 3. PowerShell'de `ollama pull qwen3:4b-instruct` komutunu çalıştır. Hafif model için `ollama pull qwen3:1.7b` kullanılabilir.
-4. GitHub'da **Releases → v0.1.0 → Source code (zip)** arşivini indir ve klasöre çıkar.
+4. GitHub'da **Releases → v0.2.0 → Source code (zip)** arşivini indir ve klasöre çıkar.
 5. `baslat.bat` dosyasına çift tıkla. Alternatif: klasörde `py -3 eon.py`.
 
-Terminalde `EON v0.1.0 hazır. Yerel adres: http://127.0.0.1:...` yazdığında arayüz tarayıcıda açılır. Terminali açık tut. EON'u durdurmak için **Ctrl+C**.
+Terminalde `EON v0.2.0 hazır. Yerel adres: http://127.0.0.1:...` yazdığında arayüz tarayıcıda açılır. Terminali açık tut. EON'u durdurmak için **Ctrl+C**.
 
 ### “Failed to fetch” / bağlantı kesildi
 
@@ -37,3 +37,12 @@ Soldaki **Geçmiş** simgesinden sohbetlerini listeleyebilir, seçip açabilir v
 `py -3 -m unittest discover -s tests -v`
 
 Birim ve sahte model testlerinin geçmesi, gerçek Windows cihazında her uygulamanın açıldığını kesinleştirmez. İlk kullanımdaki sorunları sürüm notlarında bildirebiliriz.
+
+### v0.1.0 kullanıcıları
+
+Önce çalışan EON örneğini kapat. Aynı Windows hesabında yeni klasördeki başlatıcıyı aç.
+EON mevcut kasayı okur. Eski sohbetler **Projesiz** altında **Genel Asistan** moduyla görünür.
+İlk değişiklikte yeni alanlar aynı şifreli kasaya atomik olarak yazılır. Yeni alanları korumak için sonrasında v0.2.0 kullan.
+
+Ctrl+K ile Komut Merkezi’ni aç. Ok tuşlarıyla gez, Enter ile seç ve Esc ile kapat.
+Sohbetin üstündeki mod düğmesi proje ataması, pano ve dışa aktarma seçeneklerini açar.

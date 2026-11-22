@@ -372,7 +372,7 @@ class HttpTests(unittest.TestCase):
         with self.fetch('/api/bootstrap') as response:
             data = json.loads(response.read())
             self.assertEqual(len(data['token']) > 20, True)
-            self.assertEqual(data['state']['version'], '0.1.0')
+            self.assertEqual(data['state']['version'], '0.2.0')
             self.assertIn("connect-src 'self'", response.headers['Content-Security-Policy'])
 
     def test_html_rendered(self):
@@ -387,6 +387,16 @@ class HttpTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as ex:
             self.fetch('/api/apps/launch', {'id':'chrome'}, origin='https://evil.example', token=token)
         self.assertEqual(ex.exception.code, 403)
+
+    def test_library_endpoints_require_same_origin_and_token(self):
+        for route in ("/api/search", "/api/library/project", "/api/library/star", "/api/library/look"):
+            with self.subTest(route=route):
+                with self.assertRaises(HTTPError) as denied:
+                    self.fetch(route, {}, origin=self.server.origin)
+                self.assertEqual(denied.exception.code, 403)
+                with self.assertRaises(HTTPError) as foreign:
+                    self.fetch(route, {}, origin="https://example.invalid", token=self.server.token)
+                self.assertEqual(foreign.exception.code, 403)
 
     def test_missing_token_denied(self):
         with self.assertRaises(HTTPError) as ex:

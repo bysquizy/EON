@@ -1,6 +1,6 @@
 # Güvenlik
 
-EON v0.1.0 geliştirme önizlemesidir. Henüz tam güvenlik incelemesinden geçmiş bir ürün değildir.
+EON v0.2.0 geliştirme önizlemesidir. Henüz tam güvenlik incelemesinden geçmiş bir ürün değildir.
 
 **Şu anda:**
 - Yapay zekâ modeli yalnız yerel Ollama API'siyle (`127.0.0.1:11434`) konuşur. Uzak model API'si kullanılmaz.
