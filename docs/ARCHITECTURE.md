@@ -1,46 +1,23 @@
-# EON mimarisi — mevcut ve hedef
+# EON v0.0.2 mimarisi
 
-## Mevcut v0.0.1
-
-```mermaid
-flowchart TB
-    USER["Kullanıcı"] --> CLI["eon.py"]
-    CLI --> CFG["LocalSettings"]
-    CLI --> MEM["VolatileSession / RAM"]
-    CLI --> MATH["AST + Decimal hesaplayıcı"]
-    CLI --> CLIENT["LocalOllama"]
-    CLIENT -->|"GET /api/tags, POST /api/chat"| MODEL["127.0.0.1:11434 / Ollama"]
+```
+Tarayıcı UI (HTML/CSS/JS)
+     │ Aynı-origin, token + Origin kontrolleri
+     ▼
+Python ThreadingHTTPServer (127.0.0.1: rastgele port)
+     │
+     ├── EonService ── VolatileSession (RAM)
+     │         │
+     │         └── LocalOllama ── 127.0.0.1:11434 ── yerel model
+     │
+     └── ApplicationRegistry ── Windows App Paths + Start Menu kısayolları
+                         └── LOCALAPPDATA/EON/applications.json
 ```
 
-| Dosya | İşlev |
-| --- | --- |
-| `eon.py` | CLI, komutlar, sohbet döngüsü |
-| `eon/config.py` | Yerel model listesi ve kişilik |
-| `eon/provider.py` | Loopback HTTP istemcisi, istek sınırları |
-| `eon/session.py` | RAM konuşma geçmişi |
-| `eon/tools.py` | Sınırlı matematik |
-| `tests/test_eon.py` | Birim ve negatif testler |
+Python standart kütüphanesi kullanılır. Arayüzde harici font veya script yoktur.
 
-**Henüz yok:** FastAPI, React, SQLCipher, ses, dosya araçları, gerçek Windows kontrolü, onay durum makinesi.
+**Altı sohbet özelliği:** Geçmiş RAM'den okunur; yenileme yalnız son yanıtın yerini alır; model listesi Ollama'daki kurulu yerel modellerden gelir; özet sohbet geçmişini değiştirmez; uzunluk system prompt + token sınırıyla belirlenir; istatistikler oturuma aittir.
 
-## Hedef mimari — henüz uygulanmadı
+**Windows başlatıcı:** yalnız belirli uygulama kayıtları üzerinden, tek bir kullanıcı tıklamasıyla `.exe`/`.lnk` açma. Sohbet metninden araç çağrısı çıkarılmaz; komut yorumlayıcı yoktur. Otomatik keşif eksik kalabilir ve kullanıcı yol ekleyebilir.
 
-```mermaid
-flowchart TB
-    UI["React / TypeScript UI"] --> API["FastAPI / yalnız loopback"]
-    API --> POLICY["Policy & Approval Gate"]
-    API --> MEM["Şifreli yerel hafıza"]
-    API --> LLM["Yerel model adaptörü"]
-    API --> VOICE["Çevrimdışı ses"]
-    POLICY --> TOOLS["İzinli Windows/dosya araçları"]
-    LLM --> OLLAMA["Yerel Ollama"]
-    MEM --> SQL["SQLCipher + Credential Manager"]
-```
-
-**İzin modeli:** Her riskli araç isteği sunucu tarafında doğrulanmalı; PENDING → GRANTED → CONSUMED tek kullanımlık onay, süre aşımı ve kanonik argüman kontrolü yapılmalı. Modelin isteği izin yerine geçmez.
-
-**Hafıza:** SQLCipher ve Windows Credential Manager hedef cihazda test edilmeden “şifreli hafıza hazır” denmez. Başarısızlıkta düz SQLite'a geçilmez.
-
-**Ağ:** EON istemcisinin yerel Ollama HTTP API'si bulut API değildir. İlk indirme internet ister; Ollama/Windows'un başka ağ trafiği olmayacağı garanti edilmez. Harici model API'si, canlı web araştırması ve otomatik dış veri aktarımı tasarım dışıdır.
-
-**Kabul kriteri:** Özellik için gerçek kod yolu, olumsuz senaryo testi, hedef cihaz doğrulaması ve açık kullanıcı izni gerekir.
+**Sınırlar:** Bu sürüm gerçek masaüstü uygulaması gibi görünen yerel bir web arayüzüdür; ayrı bir WebView/EXE değildir. Kalıcı şifreli hafıza, sesli kontrol ve arka plan görevleri planlama aşamasındadır.

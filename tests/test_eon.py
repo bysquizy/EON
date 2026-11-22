@@ -1,100 +1,330 @@
 import json
+import tempfile
+import threading
 import unittest
+from pathlib import Path
+from unittest.mock import patch
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 
-from eon.config import LocalSettings
+from eon.config import LocalSettings, OUTPUT_LIMITS, valid_model
 from eon.provider import LocalModelError, LocalOllama
 from eon.session import VolatileSession
+from eon.service import EonService
 from eon.tools import ToolError, calculate
+from eon.launcher import ApplicationRegistry, LaunchError, safe_launch_path
+from eon.server import start_server
+
 
 class MockResponse:
-    status = 200
-    def read(self, length):
-        return json.dumps({"message":{"role":"assistant","content":"Merhaba!"}}).encode()
+    def __init__(self, body=None, status=200):
+        self.status = status
+        self.body = body or {"message": {"content": "Merhaba!"}}
+
+    def read(self, size):
+        return json.dumps(self.body).encode('utf-8')
+
 
 class MockConnection:
-    created_with = None
-    calls = []
+    last = None
+    response = MockResponse()
     def __init__(self, host, port, timeout):
-        MockConnection.created_with = (host, port, timeout)
+        self.host, self.port = host, port
+        MockConnection.last = self
     def request(self, method, path, body=None, headers=None):
-        MockConnection.calls.append((method, path, body))
+        self.requested = (method, path, body)
     def getresponse(self):
-        return MockResponse()
+        return MockConnection.response
     def close(self):
         pass
 
-class EonTests(unittest.TestCase):
-    def test_cloud_model_refused(self):
-        with self.assertRaises(ValueError):
-            LocalSettings(model="qwen3:cloud")
 
-    def test_remote_model_refused(self):
-        with self.assertRaises(ValueError):
-            LocalSettings(model="https://example.com/model")
+class FakeProvider:
+    response = "EON yanıtı"
+    models = ["qwen3:4b-instruct", "llama3.2:3b"]
+    latest_messages = []
+    calls = 0
+    def __init__(self, settings):
+        self.settings = settings
+    def installed_models(self):
+        return list(self.models)
+    def chat(self, messages):
+        FakeProvider.calls += 1
+        FakeProvider.latest_messages = list(messages)
+        return self.response
 
-    def test_fixed_loopback(self):
-        llm = LocalOllama(LocalSettings(), connection_factory=MockConnection)
-        reply = llm.chat([{"role":"user","content":"Merhaba"}])
-        self.assertEqual(reply, "Merhaba!")
-        self.assertEqual(MockConnection.created_with[:2], ("127.0.0.1", 11434))
-        self.assertEqual(MockConnection.calls[-1][1], "/api/chat")
-        self.assertEqual(json.loads(MockConnection.calls[-1][2])["model"], "qwen3:4b-instruct")
 
-    def test_unapproved_ollama_endpoint_rejected(self):
-        llm = LocalOllama(LocalSettings(), connection_factory=MockConnection)
-        with self.assertRaises(LocalModelError):
-            llm._call("POST", "/api/pull", {"model": "qwen3:4b-instruct"})
+class ProviderTests(unittest.TestCase):
+    def setUp(self):
+        MockConnection.response = MockResponse()
 
-    def test_http_redirect_not_followed(self):
-        class RedirectResponse(MockResponse):
-            status = 302
+    def test_local_connection_only(self):
+        p = LocalOllama(LocalSettings(), connection_factory=MockConnection)
+        self.assertEqual(p.chat([{"role": "user", "content": "merhaba"}]), "Merhaba!")
+        self.assertEqual((MockConnection.last.host, MockConnection.last.port), ("127.0.0.1", 11434))
+        self.assertEqual(MockConnection.last.requested[:2], ("POST", "/api/chat"))
+        self.assertEqual(json.loads(MockConnection.last.requested[2])["think"], False)
 
-        class RedirectConnection(MockConnection):
-            def getresponse(self):
-                return RedirectResponse()
+    def test_reject_cloud_tag(self):
+        self.assertFalse(valid_model("qwen3:cloud"))
+        self.assertFalse(valid_model("model:LOUDcloud"))
+        with self.assertRaises(ValueError): LocalSettings(model="qwen3:cloud")
 
-        llm = LocalOllama(LocalSettings(), connection_factory=RedirectConnection)
-        with self.assertRaises(LocalModelError):
-            llm.chat([{"role": "user", "content": "merhaba"}])
+    def test_reject_remote_url(self):
+        with self.assertRaises(ValueError): LocalSettings(model="https://example.com/model")
 
-    def test_oversized_request_rejected(self):
-        llm = LocalOllama(LocalSettings(), connection_factory=MockConnection)
-        with self.assertRaises(LocalModelError):
-            llm.chat([{"role": "user", "content": "x" * 70000}])
+    def test_accept_other_installed_model(self):
+        self.assertTrue(valid_model("my-model:latest"))
 
-    def test_invalid_context_rejected(self):
-        with self.assertRaises(ValueError):
-            LocalSettings(context_tokens=100)
+    def test_filter_remote_and_cloud_metadata(self):
+        MockConnection.response = MockResponse({"models": [
+            {"name": "qwen3:4b-instruct"},
+            {"name": "bad:cloud"},
+            {"name": "remote:latest", "remote_host": "https://example.org"},
+            {"name": "other:latest", "remote_model": "abc"},
+            {"name": "llama3.2:3b"},
+        ]})
+        p = LocalOllama(LocalSettings(), connection_factory=MockConnection)
+        self.assertEqual(p.installed_models(), ["llama3.2:3b", "qwen3:4b-instruct"])
 
-    def test_division_by_zero_rejected(self):
-        with self.assertRaises(ToolError):
-            calculate("1/0")
+    def test_route_blocked(self):
+        p = LocalOllama(LocalSettings(), connection_factory=MockConnection)
+        with self.assertRaises(LocalModelError): p._call("POST", "/api/pull", {})
 
-    def test_session_only_recent_turns(self):
+    def test_redirect_blocked(self):
+        MockConnection.response = MockResponse(status=302)
+        p = LocalOllama(LocalSettings(), connection_factory=MockConnection)
+        with self.assertRaises(LocalModelError): p.chat([])
+
+    def test_oversized_request(self):
+        p = LocalOllama(LocalSettings(), connection_factory=MockConnection)
+        with self.assertRaises(LocalModelError): p.chat([{"role": "user", "content": "x" * 80000}])
+
+    def test_invalid_settings(self):
+        with self.assertRaises(ValueError): LocalSettings(context_tokens=100)
+        with self.assertRaises(ValueError): LocalSettings(output_tokens=3000)
+
+
+class SessionTests(unittest.TestCase):
+    def test_memory_recent_only(self):
         s = VolatileSession(max_turns=2)
-        for i in range(4):
-            s.remember_turn(f"u{i}", f"a{i}")
-        m = s.messages_for("yeni")
-        self.assertEqual(len(m), 6)
-        self.assertNotIn("u0", [x["content"] for x in m])
+        for i in range(4): s.remember_turn(f"u{i}", f"a{i}")
+        self.assertEqual(len(s.history()), 8)  # Full session remains available in RAM.
+        self.assertEqual(s.messages_for('next')[-1]['content'], 'next')
+        self.assertNotIn('u0', [x['content'] for x in s.messages_for('next')])
         s.clear()
-        self.assertEqual(len(s.messages_for("yeni")), 2)
+        self.assertEqual(s.history(), [])
+
+    def test_regenerate_replaces_without_duplicate(self):
+        s = VolatileSession()
+        s.remember_turn('Hi', 'First')
+        self.assertEqual(s.regeneration_messages()[-1], {"role": "user", "content": "Hi"})
+        s.replace_last_assistant('Second')
+        self.assertEqual(s.history(), [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Second"}])
+
+    def test_regenerate_empty_denied(self):
+        with self.assertRaises(ValueError): VolatileSession().regeneration_messages()
+
+    def test_prompt_limit(self):
+        with self.assertRaises(ValueError): VolatileSession().messages_for('x' * 2600)
+
+    def test_style_prompt(self):
+        self.assertIn('Çok kısa', VolatileSession().messages_for('Merhaba', 'kisa')[0]['content'])
 
     def test_calculator(self):
-        self.assertEqual(calculate("2*(3+5)"), "16")
-        self.assertEqual(calculate("1/4"), "0.25")
+        self.assertEqual(calculate('2*(3+5)'), '16')
+        self.assertEqual(calculate('1/4'), '0.25')
 
-    def test_calculator_rejects_code(self):
-        with self.assertRaises(ToolError):
-            calculate("__import__('os').system('whoami')")
+    def test_calculator_reject_code(self):
+        with self.assertRaises(ToolError): calculate("__import__('os').system('cmd')")
+        with self.assertRaises(ToolError): calculate('2**999999')
+        with self.assertRaises(ToolError): calculate('1/0')
 
-    def test_calculator_rejects_large_power(self):
-        with self.assertRaises(ToolError):
-            calculate("2**9999999")
 
-    def test_long_prompt_rejected(self):
-        with self.assertRaises(ValueError):
-            VolatileSession().messages_for("x" * 3000)
+class ServiceTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.launcher = ApplicationRegistry(config_path=Path(self.temp.name)/"apps.json", platform="linux")
+        FakeProvider.response = 'EON yanıtı'
+        FakeProvider.models = ['qwen3:4b-instruct', 'llama3.2:3b']
+        FakeProvider.calls = 0
+        self.s = EonService(provider_factory=FakeProvider, launcher=self.launcher)
 
-if __name__ == "__main__":
+    def test_chat_keeps_history(self):
+        r = self.s.send('Merhaba')
+        self.assertEqual(r['message'], 'EON yanıtı')
+        self.assertEqual(len(self.s.snapshot()['history']), 2)
+
+    def test_regenerate_does_not_add_pair(self):
+        self.s.send('merhaba')
+        FakeProvider.response = 'Yeni yanıt'
+        self.s.regenerate()
+        self.assertEqual(len(self.s.snapshot()['history']), 2)
+        self.assertEqual(self.s.snapshot()['history'][-1]['content'], 'Yeni yanıt')
+        self.assertEqual(self.s.snapshot()['stats']['regenerated'], 1)
+
+    def test_summary_does_not_pollute_chat(self):
+        self.s.send('Bana yardımcı ol')
+        before = self.s.snapshot()['history']
+        result = self.s.summary()
+        self.assertEqual(result['summary'], 'EON yanıtı')
+        self.assertEqual(before, self.s.snapshot()['history'])
+        self.assertEqual(self.s.snapshot()['stats']['summaries'], 1)
+
+    def test_empty_summary_denied(self):
+        with self.assertRaises(ValueError): self.s.summary()
+
+    def test_model_switch_installed_only(self):
+        self.s.select_model('llama3.2:3b')
+        self.assertEqual(self.s.snapshot()['model'], 'llama3.2:3b')
+        with self.assertRaises(ValueError): self.s.select_model('unknown:latest')
+
+    def test_model_switch_refuses_cloud(self):
+        FakeProvider.models = ['qwen3:4b-instruct', 'other:cloud']
+        with self.assertRaises(ValueError): self.s.select_model('other:cloud')
+
+    def test_model_fallback(self):
+        FakeProvider.models = ['llama3.2:3b']
+        self.assertEqual(self.s.models()['selected'], 'llama3.2:3b')
+
+    def test_length_switch(self):
+        self.s.select_length('detayli')
+        self.assertEqual(self.s.settings.output_tokens, OUTPUT_LIMITS['detayli'])
+        with self.assertRaises(ValueError): self.s.select_length('infinite')
+
+    def test_history_command(self):
+        self.s.send('merhaba')
+        self.assertIn('Sen: merhaba', self.s.command('/gecmis')['message'])
+
+    def test_stats(self):
+        self.s.send('test')
+        self.assertEqual(self.s.snapshot()['stats']['messages'], 1)
+        self.assertIn('Mesaj: 1', self.s.command('/istatistik')['message'])
+
+    def test_clear_keeps_statistics(self):
+        self.s.send('test')
+        self.s.clear()
+        self.assertEqual(self.s.snapshot()['history'], [])
+        self.assertEqual(self.s.snapshot()['stats']['messages'], 1)
+
+    def test_slash_commands(self):
+        self.assertIn('gecmis', self.s.send('/yardim')['message'])
+        self.assertEqual(self.s.send('/hesap 2*8')['message'], '16')
+        self.assertEqual(self.s.send('/model llama3.2:3b')['state']['model'], 'llama3.2:3b')
+        self.assertEqual(self.s.send('/uzunluk kisa')['state']['style'], 'kisa')
+
+    def test_chat_does_not_launch_apps(self):
+        self.s.send('Chrome aç')
+        self.assertEqual(self.launcher.list_apps()[0]['id'], 'chrome')
+
+    def test_user_message_length(self):
+        with self.assertRaises(ValueError): self.s.send('x' * 2501)
+
+
+class LauncherTests(unittest.TestCase):
+    def test_refuses_url_and_shell(self):
+        for path in ('https://example.org/abc.exe', 'cmd /c calc.exe', r'\\server\share\x.exe',
+                     r'C:\fake\run.bat', r'C:\fake\script.ps1'):
+            with self.subTest(path=path):
+                with self.assertRaises(LaunchError): safe_launch_path(path)
+
+    def test_unconfigured_launch_denied(self):
+        with tempfile.TemporaryDirectory() as d:
+            apps = ApplicationRegistry(config_path=Path(d)/'apps.json', platform='win32')
+            with self.assertRaises(LaunchError): apps.launch('chrome')
+
+    def test_non_windows_denied(self):
+        with tempfile.TemporaryDirectory() as d:
+            apps = ApplicationRegistry(config_path=Path(d)/'apps.json', platform='linux')
+            with self.assertRaises(LaunchError): apps.save('test', 'Test', 'x.exe')
+            with self.assertRaises(LaunchError): apps.launch('chrome')
+
+    def test_config_outside_repo_and_launch_with_no_shell(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / 'program.exe'
+            path.write_bytes(b'')
+            called = []
+            apps = ApplicationRegistry(config_path=Path(d)/'apps.json', platform='win32',
+                                       start_process=lambda *a, **k: called.append((a,k)))
+            with patch('eon.launcher.safe_launch_path', return_value=str(path)):
+                apps.save('myapp', 'My App', r'C:\Program Files\My App\program.exe')
+                apps.launch('myapp')
+            self.assertEqual(len(called), 1)
+            self.assertEqual(called[0][0], ([str(path)],))
+            self.assertEqual(called[0][1]['shell'], False)
+            self.assertTrue((Path(d)/'apps.json').exists())
+
+    def test_untrusted_id_refused(self):
+        with tempfile.TemporaryDirectory() as d:
+            apps = ApplicationRegistry(config_path=Path(d)/'apps.json', platform='win32')
+            with self.assertRaises(LaunchError): apps.save('../../evil', 'Invalid', r'C:\app.exe')
+
+
+class HttpTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        reg = ApplicationRegistry(config_path=Path(cls.temp.name)/'apps.json', platform='linux')
+        cls.service = EonService(provider_factory=FakeProvider, launcher=reg)
+        cls.server = start_server(service=cls.service)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        cls.server.server_close()
+        cls.thread.join(timeout=5)
+        cls.temp.cleanup()
+
+    def fetch(self, route, body=None, origin=None, token=None):
+        headers = {}
+        if body is not None:
+            headers['Content-Type'] = 'application/json'
+            if origin is not None: headers['Origin'] = origin
+            if token is not None: headers['X-EON-Token'] = token
+        req = Request(self.server.origin+route, data=json.dumps(body).encode() if body is not None else None,
+                      headers=headers, method='POST' if body is not None else 'GET')
+        return urlopen(req, timeout=5)
+
+    def test_bootstrap(self):
+        with self.fetch('/api/bootstrap') as response:
+            data = json.loads(response.read())
+            self.assertEqual(len(data['token']) > 20, True)
+            self.assertEqual(data['state']['version'], '0.0.2')
+            self.assertIn("connect-src 'self'", response.headers['Content-Security-Policy'])
+
+    def test_html_rendered(self):
+        with self.fetch('/') as response:
+            text = response.read().decode('utf-8')
+            self.assertIn('EON', text)
+            self.assertIn('view-apps', text)
+            self.assertNotIn('fonts.googleapis.com', text)
+
+    def test_cross_origin_denied(self):
+        token = json.loads(self.fetch('/api/bootstrap').read())['token']
+        with self.assertRaises(HTTPError) as ex:
+            self.fetch('/api/apps/launch', {'id':'chrome'}, origin='https://evil.example', token=token)
+        self.assertEqual(ex.exception.code, 403)
+
+    def test_missing_token_denied(self):
+        with self.assertRaises(HTTPError) as ex:
+            self.fetch('/api/clear', {}, origin=self.server.origin)
+        self.assertEqual(ex.exception.code, 403)
+
+    def test_post_with_token(self):
+        token = json.loads(self.fetch('/api/bootstrap').read())['token']
+        with self.fetch('/api/message', {'text': 'Merhaba'}, origin=self.server.origin, token=token) as res:
+            result = json.loads(res.read())
+            self.assertEqual(result['message'], 'EON yanıtı')
+
+    def test_no_arbitrary_command_route(self):
+        token = json.loads(self.fetch('/api/bootstrap').read())['token']
+        with self.assertRaises(HTTPError) as ex:
+            self.fetch('/api/shell', {'cmd': 'calc'}, origin=self.server.origin, token=token)
+        self.assertEqual(ex.exception.code, 404)
+
+
+if __name__ == '__main__':
     unittest.main()

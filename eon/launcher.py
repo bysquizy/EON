@@ -1,0 +1,242 @@
+"""Windows application launcher with an explicit, local allowlist.
+
+No shell, no command arguments, no LLM-controlled launch, no remote URLs.
+Paths are saved outside the repository in the current user's LOCALAPPDATA.
+"""
+import json
+import ntpath
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+import tempfile
+import threading
+from typing import Callable
+
+
+PRESETS = {
+    "chrome": {"name": "Chrome", "terms": ["google chrome", "chrome"], "executables": ["chrome.exe"]},
+    "spotify": {"name": "Spotify", "terms": ["spotify"], "executables": ["spotify.exe"]},
+    "notion": {"name": "Notion", "terms": ["notion"], "executables": ["notion.exe"]},
+    "obs": {"name": "OBS Studio", "terms": ["obs studio", "obs"], "executables": ["obs64.exe", "obs32.exe"]},
+    "solidworks": {"name": "SOLIDWORKS", "terms": ["solidworks"], "executables": ["sldworks.exe"]},
+    "antigravity": {"name": "Antigravity", "terms": ["antigravity"], "executables": ["antigravity.exe"]},
+}
+BAD_SHORTCUT_WORDS = ("uninstall", "uninst", "setup", "install", "updater", "update", "crash", "repair", "readme", "help")
+NAME_RE = re.compile(r"^[\w][\w .-]{0,47}$", flags=re.UNICODE)
+KEY_RE = re.compile(r"^[a-z][a-z0-9_-]{0,47}$")
+
+
+class LaunchError(ValueError):
+    pass
+
+
+def storage_path() -> Path:
+    root = os.environ.get("LOCALAPPDATA")
+    if root:
+        return Path(root) / "EON" / "applications.json"
+    return Path.home() / ".local" / "share" / "EON" / "applications.json"
+
+
+def safe_launch_path(value: str, *, windows: bool = True) -> str:
+    """Only allow existing local .exe/.lnk files. Never accept shell commands or UNC paths."""
+    if not isinstance(value, str) or not 1 <= len(value) <= 1024 or "\x00" in value:
+        raise LaunchError("Uygulama yolu geçersiz.")
+    path = value.strip().strip('"')
+    if windows:
+        if (not ntpath.isabs(path) or path.startswith(("\\\\", "//"))
+                or not re.match(r"^[A-Za-z]:[\\/]", path)):
+            raise LaunchError("Yalnız yerel diskteki tam dosya yollarına izin verilir.")
+    elif not os.path.isabs(path):
+        raise LaunchError("Tam dosya yolu gerekli.")
+    if ntpath.splitext(path)[1].lower() not in (".exe", ".lnk"):
+        raise LaunchError("Yalnız EXE ve Windows kısayolu (LNK) seçilebilir.")
+    if not Path(path).is_file():
+        raise LaunchError("Bu konumda uygulama dosyası bulunamadı.")
+    return str(Path(path).resolve(strict=True))
+
+
+class ApplicationRegistry:
+    def __init__(self, config_path: Path | None = None, *, platform: str | None = None,
+                 start_process: Callable[..., object] | None = None):
+        self.config_path = config_path or storage_path()
+        self.platform = platform or sys.platform
+        self._start_process = start_process or subprocess.Popen
+        self._lock = threading.RLock()
+        self._custom = self._load()
+        self._discovered: dict[str, str] = {}
+        if self.platform == "win32":
+            self.refresh()
+
+    def _load(self) -> dict[str, dict[str, str]]:
+        try:
+            data = json.loads(self.config_path.read_text(encoding="utf-8"))
+            items = data.get("applications", {})
+            if not isinstance(items, dict):
+                return {}
+            return {
+                key: {"name": val["name"], "path": val["path"]}
+                for key, val in items.items()
+                if (KEY_RE.fullmatch(key) and isinstance(val, dict)
+                    and isinstance(val.get("name"), str) and isinstance(val.get("path"), str))
+            }
+        except (FileNotFoundError, OSError, ValueError, TypeError, KeyError):
+            return {}
+
+    def _persist(self) -> None:
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(prefix="eon-", suffix=".tmp", dir=self.config_path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump({"version": 1, "applications": self._custom}, handle,
+                          ensure_ascii=False, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(tmp_path, self.config_path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
+    def refresh(self) -> None:
+        """Look for registered application executables and Start Menu shortcuts."""
+        discovered: dict[str, str] = {}
+        if self.platform != "win32":
+            self._discovered = discovered
+            return
+        # Registered App Paths are controlled by the local Windows installation.
+        try:
+            import winreg
+            for key, preset in PRESETS.items():
+                for executable in preset["executables"]:
+                    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                        try:
+                            with winreg.OpenKey(hive, rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{executable}") as h:
+                                target = winreg.QueryValue(h, None)
+                            discovered[key] = safe_launch_path(target)
+                            break
+                        except (FileNotFoundError, OSError, LaunchError):
+                            pass
+                    if key in discovered:
+                        break
+        except ImportError:
+            pass
+        dirs = []
+        appdata = os.environ.get("APPDATA")
+        programdata = os.environ.get("PROGRAMDATA")
+        if appdata:
+            dirs.append(Path(appdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs")
+        if programdata:
+            dirs.append(Path(programdata) / "Microsoft" / "Windows" / "Start Menu" / "Programs")
+        seen = 0
+        for directory in dirs:
+            if not directory.is_dir():
+                continue
+            for root, _, filenames in os.walk(directory, followlinks=False):
+                for filename in sorted(filenames):
+                    seen += 1
+                    if seen > 6000:
+                        break
+                    if not filename.lower().endswith(".lnk"):
+                        continue
+                    stem = Path(filename).stem.casefold().strip()
+                    if any(word in stem for word in BAD_SHORTCUT_WORDS):
+                        continue
+                    for key, preset in PRESETS.items():
+                        if key in discovered:
+                            continue
+                        if any(stem == term or stem.startswith(term + " ")
+                               for term in preset["terms"]):
+                            try:
+                                discovered[key] = safe_launch_path(str(Path(root) / filename))
+                            except LaunchError:
+                                pass
+                if seen > 6000:
+                    break
+            if seen > 6000:
+                break
+        with self._lock:
+            self._discovered = discovered
+
+    def list_apps(self) -> list[dict]:
+        with self._lock:
+            items = []
+            for key, spec in PRESETS.items():
+                override = self._custom.get(key)
+                found = self._discovered.get(key)
+                path = override["path"] if override else found
+                items.append({"id": key, "name": spec["name"], "ready": bool(path and Path(path).is_file()),
+                              "source": "saved" if override else "found" if found else "missing",
+                              "path": path or ""})
+            for key, custom in sorted(self._custom.items()):
+                if key not in PRESETS:
+                    items.append({"id": key, "name": custom["name"],
+                                  "ready": Path(custom["path"]).is_file(),
+                                  "source": "saved", "path": custom["path"]})
+            return items
+
+    def save(self, app_id: str, name: str, path: str) -> dict:
+        if self.platform != "win32":
+            raise LaunchError("Uygulama başlatma yalnız Windows'ta kullanılabilir.")
+        if not isinstance(app_id, str) or not KEY_RE.fullmatch(app_id):
+            raise LaunchError("Uygulama kimliği geçersiz.")
+        if not isinstance(name, str) or not NAME_RE.fullmatch(name.strip()):
+            raise LaunchError("Uygulama adı geçersiz.")
+        checked = safe_launch_path(path)
+        with self._lock:
+            if app_id not in self._custom and len(self._custom) >= 24:
+                raise LaunchError("En fazla 24 uygulama eklenebilir.")
+            self._custom[app_id] = {"name": PRESETS[app_id]["name"] if app_id in PRESETS else name.strip(),
+                                    "path": checked}
+            self._persist()
+        return {"id": app_id, "name": name.strip(), "path": checked}
+
+    def remove(self, app_id: str) -> None:
+        with self._lock:
+            if app_id not in self._custom:
+                raise LaunchError("Kayıtlı uygulama bulunamadı.")
+            del self._custom[app_id]
+            self._persist()
+
+    def launch(self, app_id: str) -> None:
+        """Launch only an explicitly selected entry; never a freeform chat instruction."""
+        if self.platform != "win32":
+            raise LaunchError("Uygulama başlatma yalnız Windows'ta kullanılabilir.")
+        with self._lock:
+            if app_id in self._custom:
+                path = self._custom[app_id]["path"]
+            elif app_id in PRESETS and app_id in self._discovered:
+                path = self._discovered[app_id]
+            else:
+                raise LaunchError("Uygulama bulunamadı. Ayarlar bölümünden yol ekle.")
+        path = safe_launch_path(path)
+        try:
+            if path.lower().endswith(".lnk"):
+                os.startfile(path)
+            else:
+                self._start_process([path], shell=False, cwd=str(Path(path).parent), close_fds=True)
+        except OSError as exc:
+            raise LaunchError("Windows uygulamayı başlatamadı.") from None
+
+
+def choose_executable() -> str:
+    """Show local Windows-native file picker on a direct user request."""
+    if sys.platform != "win32":
+        raise LaunchError("Dosya seçici yalnız Windows'ta kullanılabilir.")
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        try:
+            path = filedialog.askopenfilename(
+                parent=root,
+                title="Açılacak uygulamayı seç",
+                filetypes=[("Uygulamalar", "*.exe *.lnk"), ("Tüm dosyalar", "*.*")],
+            )
+        finally:
+            root.destroy()
+        return safe_launch_path(path) if path else ""
+    except (OSError, ImportError) as exc:
+        raise LaunchError("Windows dosya seçicisi açılamadı.") from None

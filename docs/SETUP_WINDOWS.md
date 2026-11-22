@@ -1,60 +1,72 @@
-# Windows'ta EON'u çalıştırmak
+# Windows'ta EON v0.0.2
 
-EON v0.0.1 henüz bir EXE uygulaması değil. Şimdilik Python ve Ollama ile çalışan bir sohbet prototipi.
+EON şimdilik Python ile açılan yerel bir web arayüzüdür. Henüz `.exe` yükleyicisi yoktur.
 
-## 1. Gerekenleri kur
+### 1. Python ve Ollama
 
-- [Python](https://www.python.org/downloads/windows/) (3.10 veya üzeri; 3.13 önerilir)
-- [Ollama for Windows](https://ollama.com/download/windows)
+[Python 3.10+](https://www.python.org/downloads/windows/) ve [Ollama for Windows](https://ollama.com/download/windows) kurulu olmalı. PowerShell'de sürümleri kontrol et:
 
-PowerShell'de `py -3 --version` ve `ollama --version` komutlarıyla kurulumları kontrol edebilirsin. Python zaten yüklüyse tekrar kurmana gerek yok.
+```powershell
+py -3 --version
+ollama --version
+```
 
-## 2. Ollama'yı yerel çalışacak şekilde ayarla
+Python zaten yüklüyse yeniden kurma. EON'un kendisi üçüncü taraf Python paketi gerektirmez.
 
-Windows kullanıcı ortam değişkenlerine şu iki değeri ekle:
+### 2. Ollama'yı yerel moda ayarla
+
+Windows **kullanıcı ortam değişkenleri** üzerinden şunları tanımla:
 
 | Değişken | Değer |
 | --- | --- |
 | `OLLAMA_NO_CLOUD` | `1` |
 | `OLLAMA_HOST` | `127.0.0.1:11434` |
 
-İstersen PowerShell'de kullanıcı düzeyinde ayarlayabilirsin:
+PowerShell ile de ayarlanabilir:
 
 ```powershell
 [Environment]::SetEnvironmentVariable("OLLAMA_NO_CLOUD", "1", "User")
 [Environment]::SetEnvironmentVariable("OLLAMA_HOST", "127.0.0.1:11434", "User")
 ```
 
-Sonrasında Ollama'yı tamamen kapatıp yeniden aç.
+**Ollama'yı tamamen kapatıp yeniden başlat.** EON, modelle yalnız `127.0.0.1:11434` adresinde iletişim kurar.
 
-## 3. Modeli indir
+### 3. Modeli indir
 
 ```powershell
 ollama pull qwen3:4b-instruct
 ```
 
-Daha hafif seçenek: `ollama pull qwen3:1.7b`. İlk indirme internet gerektirir.
+Daha hafif bir seçenek için `ollama pull qwen3:1.7b` kullanılabilir. İlk indirme internet gerektirir. Daha sonra EON, yalnızca Ollama'nın kurulu yerel modellerini listeler; bulut modeli seçmez.
 
-## 4. EON'u başlat
+### 4. EON'u başlat
 
-Depoyu **Code → Download ZIP** üzerinden indirip aç. Klasördeki `baslat.bat` dosyasını çalıştır veya PowerShell'de:
+GitHub'da **Code → Download ZIP** seçeneğini kullanıp arşivi aç. İçindeki `baslat.bat` dosyasını çalıştır veya proje klasöründe:
 
 ```powershell
 py -3 eon.py
 ```
 
-Hafif model için:
+Tarayıcıda rastgele bir yerel port üzerinden EON açılır. Kapatmak için terminalde **Ctrl+C** yap. Varsayılan tarayıcıyı otomatik açmak istemiyorsan `py -3 eon.py --no-browser`. Terminal modu için `py -3 eon.py --cli`.
 
-```powershell
-py -3 eon.py --model qwen3:1.7b
-```
+### 5. Uygulama başlatıcı
 
-`/yardim` komutuyla seçenekleri görebilirsin.
+Soldaki **Uygulamalar** sekmesini aç. EON Windows kayıtlı uygulamalarını ve Başlat menüsündeki kısayolları arar. Bulunamayan uygulamayı seçerek **Yol → Gözat** ile `.exe` veya `.lnk` dosyasını göster; ardından kaydet ve **Aç** tuşuna bas.
 
-## Bir sorun olursa
+Uygulama yolları sistemin kullanıcıya özel `%LOCALAPPDATA%\EON\applications.json` dosyasında saklanır. Bu dosya GitHub'a gönderilmez. Yalnız güvenilir programların dosyalarını seç; bir EXE'yi başlatmak Windows'ta kod çalıştırmak anlamına gelir.
 
-Ollama'nın çalıştığını, indirdiğin modelin doğru olduğunu ve Python/Ollama komutlarının bulunduğunu kontrol et. Yanıtlar yavaşsa daha küçük modeli dene.
+### Komutlar
 
-Testleri çalıştırmak için: `py -3 -m unittest discover -s tests -v`.
+`/gecmis`, `/yeniden`, `/model`, `/model MODEL_ADI`, `/ozet`, `/uzunluk kisa`, `/uzunluk normal`, `/uzunluk detayli`, `/istatistik`, `/temizle`, `/hesap 2*(3+5)`.
 
-> Bu sürüm henüz gerçek Windows + Ollama sohbetiyle uçtan uca doğrulanmadı. Hassas verilerle kullanılması önerilmez.
+### Sorun olursa
+
+- **Model bulunamadı:** Ollama'nın çalıştığından ve `ollama list` komutunda bir yerel modelin göründüğünden emin ol.
+- **Ollama'ya bağlanılamıyor:** Yerel `127.0.0.1:11434` ayarını ve Ollama'nın çalıştığını kontrol et.
+- **Uygulama bulunamadı:** Yol ekle; bazı Store uygulamaları normal `.exe` veya Başlat menüsü kısayolu sunmayabilir.
+- **Dosya seçici açılmıyor:** Tam `.exe` veya `.lnk` yolunu elle girebilirsin.
+- **Yanıt yavaş:** Daha küçük yerel model dene. Modelin boyutu ve bilgisayarın kaynakları önemlidir.
+
+Geliştirici testi: `py -3 -m unittest discover -s tests -v`.
+
+**Not:** Bu sürümde kalıcı şifreli sohbet hafızası ve sesli konuşma bulunmaz. Windows üzerinde uçtan uca gerçek model ve uygulama açma testi henüz tamamlanmamıştır.

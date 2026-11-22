@@ -1,31 +1,23 @@
-# Python cache and virtual environments
 __pycache__/
 *.py[cod]
+.pytest_cache/
 .venv/
 venv/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# Personal data and secrets
 .env
 .env.*
 !.env.example
 *.db
-*.sqlite
-*.sqlite3
-*.db-shm
-*.db-wal
+*.sqlite*
 *.key
 *.pem
-*.p12
 *.pfx
+*.p12
 secrets/
 data/
 logs/
-
-# Local IDE and OS
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
+applications.json
+local-settings.json

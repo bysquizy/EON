@@ -1,34 +1,21 @@
 # Yol haritası
 
-EON'un hedefi, önce güvenilir bir yerel sohbet deneyimi sunmak, ardından ihtiyaç duyulan özellikleri parça parça eklemek. Her sürümde küçük ama test edilebilir ilerlemeler yapılacak.
+EON önce sade ve güvenilir bir yerel asistan, sonra kullanıcı onayıyla daha fazla iş yapabilen bir masaüstü uygulaması olacak.
 
-## Geliştirme aşamaları
-
-| Sürüm | Odak | Durum |
+| Sürüm | Hedef | Durum |
 | --- | --- | --- |
-| **v0.0.1** | Yerel sohbetin ilk temeli | Yayınlandı |
-| **v0.0.2** | Güvenli izin ve araç altyapısı | Planlanıyor |
-| **v0.0.3** | Düzenlenebilir, şifreli yerel hafıza | Planlanıyor |
-| **v0.1.0** | İlk sade masaüstü arayüzü | Planlanıyor |
+| **v0.0.1** | Yerel sohbetin ilk prototipi | Yayınlandı |
+| **v0.0.2** | Arayüz, 6 sohbet özelliği, yerel uygulama başlatıcı | Yayınlandı; gerçek Windows testi bekleniyor |
+| **v0.0.3** | Tek kullanımlık izin altyapısı ve şifreli hafıza temeli | Plan |
+| **v0.1.0** | İlk bütünleşik Windows MVP | Plan |
 
-Bu sıralama bir hedef; geliştirme sırasında değişebilir.
+## Daha sonra
 
-## Daha sonra eklemek istediklerimiz
+- Yerel ve seçici, kullanıcının düzenleyebildiği hafıza
+- İzinli dosya ve masaüstü araçları
+- Türkçe/İngilizce çevrimdışı sesli iletişim ve “Hey EON”
+- EON Studio ile belge ve tablo üretimi
+- Yerel belgelerden kaynaklı araştırma, projeler ve görevler
+- Sade bildirimler ve kişiselleştirilebilir arayüz
 
-**Doğal bir asistan:** Daha iyi sohbet, kişilik, Türkçe ve İngilizce sesli iletişim, “Hey EON” ve gerektiğinde kısa yanıtlar.
-
-**Günlük işleri kolaylaştırmak:** Görevler, hatırlatmalar, yerel bildirimler, kullanıcı onaylı Windows kontrolleri ve tekrarlanan işler.
-
-**Üretmek ve araştırmak:** Dosyalardan bilgi çıkarma, kaynaklı yerel araştırma, PDF/DOCX/XLSX/PPTX hazırlama ve düzenleme (EON Studio).
-
-**Düzenli bir çalışma alanı:** Ayrı projeler ve sohbetler, seçici hafıza, dosyalar, Prompt Köprüsü, sade bir arayüz ve kolay kurulum.
-
-**Güvenlik ve performans:** Her riskli işleme ayrı onay, şifreli saklama, veri kontrolü ve farklı bilgisayarlarda verimli çevrimdışı çalışma.
-
-## Değişmeyecek üç şey
-
-- **Yerel çalışma:** Harici AI model API'leri ve ücretli model servisleri kullanılmayacak.
-- **Kullanıcı kontrolü:** Riskli bir işlem, açık izin olmadan gerçekleşmeyecek.
-- **Şeffaf ilerleme:** Planlanan özellikler, tamamlanmış gibi gösterilmeyecek.
-
-Tamamlanan değişiklikleri [CHANGELOG](../CHANGELOG.md) ve [Releases](https://github.com/bysquizy/EON/releases) üzerinden takip edebilirsin.
+**Sabit ilkeler:** Harici AI model API'si yok. Riskli eylem için kullanıcı onayı var. Özel veriler repo içine eklenmez. Planlanan özellikler tamamlanmış gibi gösterilmez.

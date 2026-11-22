@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#070b1b">
+  <title>EON — Yerel Asistan</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <svg width="0" height="0" class="svg-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="logoGradient" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#6189ff"/><stop offset=".65" stop-color="#b1baff"/><stop offset="1" stop-color="#e9ecff"/></linearGradient>
+      <symbol id="logo" viewBox="0 0 120 70"><path d="M4 58C34 58 42 8 62 8s26 40 54 48C88 46 80 30 62 30S34 58 4 58z" fill="url(#logoGradient)"/></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="14" rx="3"/><path d="M9 18v3l3-3M8 10h8M8 14h5"/></symbol>
+      <symbol id="i-apps" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></symbol>
+      <symbol id="i-history" viewBox="0 0 24 24"><path d="M4 7V3M4 7h4M4.2 7a9 9 0 1 1-1.4 6"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.5v2.7M12 18.8v2.7M2.5 12h2.7M18.8 12h2.7M5.3 5.3l1.9 1.9M16.8 16.8l1.9 1.9M5.3 18.7l1.9-1.9M16.8 7.2l1.9-1.9"/></symbol>
+      <symbol id="i-send" viewBox="0 0 24 24"><path d="M3 4l18 8-18 8 3-8z"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="m7 17 10-10M8 7h9v9"/></symbol>
+      <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M5.8 9.2a7 7 0 0 1 12.5-2.1L20 11M4 13l1.7 3.9a7 7 0 0 0 12.5-2.1"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></symbol>
+    </defs>
+  </svg>
+  <div class="window">
+    <header class="topbar">
+      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.0.2</span></div>
+      <div class="top-status" id="connection"><span class="status-dot"></span><span id="connectionText">Bağlanıyor...</span></div>
+    </header>
+    <div class="main-layout">
+      <nav class="sidebar" aria-label="Ana menü">
+        <button class="nav-button selected" data-view="chat" title="Sohbet" aria-label="Sohbet"><svg><use href="#i-chat"/></svg></button>
+        <button class="nav-button" data-view="apps" title="Uygulamalar" aria-label="Uygulamalar"><svg><use href="#i-apps"/></svg></button>
+        <button class="nav-button" data-view="history" title="Geçmiş" aria-label="Geçmiş"><svg><use href="#i-history"/></svg></button>
+        <button class="nav-button" data-view="settings" title="Ayarlar" aria-label="Ayarlar"><svg><use href="#i-settings"/></svg></button>
+        <div class="nav-divider"></div>
+        <div class="sidebar-bottom" title="Yerel kullanım">LOCAL<span class="small-dot"></span></div>
+      </nav>
+      <main class="workspace">
+        <section class="page chat-page active-page" id="view-chat" aria-label="Sohbet">
+          <div class="planet" aria-hidden="true"></div>
+          <div class="chat-top-actions" id="chatActions">
+            <button type="button" class="text-button" id="summaryButton">Sohbeti özetle</button>
+            <button type="button" class="text-button" id="clearButton">Temizle</button>
+          </div>
+          <div class="welcome" id="welcome">
+            <svg class="hero-logo"><use href="#logo"/></svg>
+            <h1>EON</h1>
+            <p>Buradayım. Ne yapmak istersin?</p>
+            <div class="suggestions">
+              <button type="button" data-action="apps">Uygulama aç <svg><use href="#i-arrow"/></svg></button>
+              <button type="button" data-action="code">Kod hakkında sor <svg><use href="#i-arrow"/></svg></button>
+              <button type="button" data-action="math">Bir hesap yap <svg><use href="#i-arrow"/></svg></button>
+            </div>
+          </div>
+          <div class="chat-log" id="chatLog" role="log" aria-live="polite" aria-label="Mesajlar"></div>
+          <div class="summary-panel hidden" id="summaryPanel"><div class="summary-heading"><strong>Sohbet özeti</strong><button type="button" id="dismissSummary" aria-label="Özeti kapat"><svg><use href="#i-x"/></svg></button></div><div id="summaryText" class="summary-text"></div></div>
+          <div class="composer-wrap">
+            <div class="composer">
+              <label class="sr-only" for="messageInput">Mesaj</label>
+              <textarea rows="1" maxlength="2500" id="messageInput" placeholder="EON'a bir şey sor..."></textarea>
+              <select id="modelSelect" aria-label="Yerel model" title="Model seçimi"><option value="">Modeller yükleniyor</option></select>
+              <button class="send-button" type="button" id="sendButton" title="Mesaj gönder" aria-label="Gönder"><svg><use href="#i-send"/></svg></button>
+            </div>
+            <div class="composer-footer"><span>Yerel AI · Bulut servisi kullanılmaz</span><span id="busyMessage"></span></div>
+          </div>
+        </section>
+        <section class="page content-page" id="view-apps" aria-label="Uygulamalar">
+          <div class="page-heading"><div><p class="eyebrow">ARAÇLAR</p><h2>Uygulamalar</h2><p>Bilgisayarındaki programları buradan tek tıkla aç.</p></div><button class="outline-button" id="refreshApps" type="button"><svg><use href="#i-refresh"/></svg> Yeniden ara</button></div>
+          <div class="app-list" id="appList"></div>
+          <div class="app-footer"><span>Yol bulunamadıysa uygulamayı seçerek ekleyebilirsin.</span><button id="addApp" class="outline-button" type="button"><svg><use href="#i-plus"/></svg> Uygulama ekle</button></div>
+          <p class="subtle-note">Uygulamalar yalnızca <strong>Aç</strong> düğmesine bastığında başlatılır. Kaydettiğin yollar bu bilgisayarda kalır.</p>
+        </section>
+        <section class="page content-page" id="view-history" aria-label="Geçmiş">
+          <div class="page-heading"><div><p class="eyebrow">SOHBET</p><h2>Geçmiş</h2><p>Bu oturumdaki konuşmaların. Uygulamayı kapatınca kalıcı olarak kaydedilmez.</p></div></div>
+          <div class="history-list" id="historyList"></div>
+        </section>
+        <section class="page content-page" id="view-settings" aria-label="Ayarlar">
+          <div class="page-heading"><div><p class="eyebrow">KONTROL</p><h2>Ayarlar</h2><p>EON'u kullanmak istediğin gibi ayarla.</p></div></div>
+          <div class="settings-grid">
+            <div class="settings-card"><h3>Yanıt uzunluğu</h3><p>Bu oturum için cevapların ayrıntı seviyesini seç.</p><div class="segmented" id="lengthControls"><button type="button" data-style="kisa">Kısa</button><button type="button" data-style="normal">Normal</button><button type="button" data-style="detayli">Detaylı</button></div></div>
+            <div class="settings-card"><h3>Yerel model</h3><p>Yalnızca Ollama'da indirilmiş modeller görüntülenir.</p><select id="settingsModelSelect" aria-label="Yerel model seç"></select><button type="button" class="inline-link" id="reloadModels">Model listesini yenile</button></div>
+            <div class="settings-card"><h3>Oturum bilgisi</h3><div class="stats-grid"><div><strong id="countMessages">0</strong><span>Mesaj</span></div><div><strong id="countRetries">0</strong><span>Yenileme</span></div><div><strong id="countSummaries">0</strong><span>Özet</span></div><div><strong id="countMinutes">0</strong><span>Dakika</span></div></div></div>
+            <div class="settings-card"><h3>Gizlilik</h3><p>Sohbet geçmişi yalnızca bellekte tutulur. Uygulama yolları yerel ayar dosyasına kaydedilir. EON bulut modeli kullanmaz.</p><p class="note-small">Ollama'nın kendi kayıtları ve Windows'un sistem günlükleri bu garantinin dışında olabilir.</p></div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div class="toast hidden" id="toast" role="status"></div>
+    <div class="modal-overlay hidden" id="appModal" role="presentation">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-top"><h2 id="modalTitle">Uygulama yolu</h2><button type="button" id="closeAppModal" class="icon-button" aria-label="Kapat"><svg><use href="#i-x"/></svg></button></div>
+        <p>Windows'ta açılacak EXE dosyasını veya Başlat menüsü kısayolunu seç.</p>
+        <label for="appName">Uygulama adı</label><input type="text" id="appName" maxlength="48" placeholder="Örn. Hesap Makinesi">
+        <label for="appPath">Dosya yolu</label><div class="path-row"><input type="text" id="appPath" placeholder="C:\Program Files\...\program.exe"><button id="browseApp" type="button" class="outline-button">Gözat</button></div>
+        <div class="modal-actions"><button type="button" id="removeApp" class="text-button">Kaydı sil</button><div class="modal-spacer"></div><button id="cancelApp" type="button" class="outline-button">İptal</button><button id="saveApp" type="button" class="primary-button">Kaydet</button></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

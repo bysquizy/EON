@@ -1,18 +1,16 @@
-# EON gizlilik bildirimi — v0.0.1
+# Gizlilik
 
-| Veri | Mevcut davranış |
+EON'un amacı yerel çalışmak ve kullanıcıya veri üzerinde kontrol vermektir.
+
+| Veri | v0.0.2 davranışı |
 | --- | --- |
-| Sohbet | EON işlem belleğinde tutulur, EON tarafından kalıcı DB'ye yazılmaz |
-| Model yanıtı | Yerel Ollama servisinden alınır |
-| Matematik komutu | Yalnız Python işlemi içinde değerlendirilir |
+| Sohbet ve yanıtlar | Yalnız çalışan Python işleminde RAM'de; EON kalıcı kaydetmez |
+| Model işlemi | `127.0.0.1:11434` Ollama yerel API |
+| Kurulu model listesi | Ollama'dan yerel olarak sorgulanır |
+| Uygulama yolları | Kullanıcının yerel `%LOCALAPPDATA%\EON\applications.json` ayar dosyası |
 | API anahtarı | Gerekmez |
-| Kalıcı hafıza | Henüz mevcut değil |
-| EON telemetrisi | Prototipte telemetri kodu yok |
+| Harici AI / telemetri | Kodda yok |
 
-**Sınır:** EON'un kendi veritabanına yazmaması, Windows swap/çökme dökümleri, terminal geçmişi veya Ollama günlüklerinde hiç iz kalmayacağını garanti etmez.
+Model indirme ve yazılım kurulumu internet gerektirir. Windows'un ve Ollama'nın sistem düzeyindeki günlükleri, önbellekleri ve ağ davranışı ayrıca değerlendirilmelidir. Tam bilgisayar izolasyonu garanti edilmez.
 
-EON model istemcisi yalnız `127.0.0.1:11434` adresine bağlanır. Bulut AI API'si veya otomatik web araştırması yoktur. Model indirme ve yazılım kurulumu internet gerektirir. `OLLAMA_NO_CLOUD=1` Ollama bulut işlevlerini kapatmak için önerilir; tüm bilgisayarın ağdan yalıtıldığı iddia edilmez.
-
-GitHub'a kişisel sohbetler, sırlar, token'lar veya gerçek hafıza veritabanları yüklenmemelidir. `.gitignore` tek başına kazara commit riskini ortadan kaldırmaz.
-
-**Hedef:** SQLCipher ile yerel şifreleme, kullanıcı tarafından düzenlenebilir/silinebilir seçici hafıza, PUBLIC/PRIVATE/SECRET sınıflandırması ve denetlenebilir izinler. Bunlar henüz uygulanmadı.
+GitHub'a gerçek kişilerin verileri, cihaz bilgileri, kullanıcı yolları, API anahtarları veya sohbet örnekleri yüklenmemelidir. Otomatik kontrol elle incelemenin yerini tutmaz.

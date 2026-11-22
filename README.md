@@ -1,56 +1,85 @@
-# EON
+# EON Local v0.0.1
 
-**Kendi bilgisayarında çalışan, kontrolü kullanıcıya bırakan bir AI asistanı.**
+İlk **tamamen yerel yazılı sohbet prototipi**. Bulut AI API'si, API anahtarı, abonelik,
+MCP, dosya taraması veya shell komut yürütme kullanmaz.
 
-EON, Windows için geliştirilen yerel bir yapay zekâ asistanı projesi. Amaç; doğal bir sohbet deneyimini zamanla hafıza, görevler ve bilgisayar üzerinde yapılabilecek işlemlerle bir araya getirmek. Bunu yaparken gizlilikten ve kullanıcı kontrolünden ödün vermemek.
+> Bu bir üretim uygulaması değildir. Henüz şifreli kalıcı hafıza, proje
+> izolasyonu, ses, onay sistemi veya Windows kontrolü yoktur.
 
-Proje henüz yolun başında. Şimdilik küçük ama çalışır bir temel oluşturuluyor; yeni özellikler adım adım eklenecek.
+## Gerekenler
+- Windows 11.
+- Python 3.10 veya üzeri (Windows üzerinde `py -3` çalışmalı).
+- Resmî Ollama: https://ollama.com/download/windows
+- En az birkaç GB boş alan. Resmî Ollama Windows belgeleri ikili
+  kurulum için en az 4 GB ve modeller için ek depolama belirtiyor.
 
-## Şu anda neler yapabiliyor?
+## 1. Ollama'yı yalnız yerel olacak şekilde yapılandır
+Windows > "Hesabınız için ortam değişkenlerini düzenleyin" penceresinde
+iki kullanıcı değişkeni oluştur:
 
-**v0.0.1**, EON'un ilk prototipi.
+`OLLAMA_NO_CLOUD` = `1`
+`OLLAMA_HOST` = `127.0.0.1:11434`
 
-- Ollama ile bilgisayarda çalışan bir model üzerinden yazılı sohbet.
-- Türkçe ve İngilizce yanıtlar.
-- Son birkaç mesajı oturum boyunca hatırlama.
-- Basit matematik işlemleri.
+Ollama görev çubuğu simgesinden **Quit** seç, sonra Başlat menüsünden
+yeniden aç. Resmî yönerge: https://docs.ollama.com/faq
 
-Henüz bir masaüstü arayüzü, sesli konuşma veya Windows'u kontrol etme özelliği yok. Bunlar sonraki sürümlerin hedefi.
+Önemli: Ollama'nın bulut özelliklerini kapatmak, uygulamanın yazılım
+güncellemeleri için asla internete çıkmayacağını garanti etmez.
+EON'un kendi kodundaki model isteği yalnızca 127.0.0.1'e yapılır.
 
-> **Durum:** Erken geliştirme aşaması. Otomatik testler geçiyor ancak gerçek modelle Windows üzerindeki ilk kullanım testi henüz tamamlanmadı.
+## 2. Modeli bir kere indir
+PowerShell veya CMD'de ayrı bir komut olarak:
 
-## Başlamak için
+`ollama pull qwen3:4b-instruct`
 
-Windows'ta **Python 3.10+** ve [Ollama](https://ollama.com/download/windows) gerekiyor. Ollama'nın bulut özelliklerini kapatıp yalnızca yerel adreste çalışacak şekilde ayarlanması önerilir.
+Daha hafif model istiyorsan bunun yerine:
 
-Önce modeli indir:
+`ollama pull qwen3:1.7b`
 
-```powershell
-ollama pull qwen3:4b-instruct
-```
+Bu indirme için internet gerekir. Sonrasında yerel model sohbeti
+internetsiz yapılabilir.
 
-Ardından projeyi indirip klasöründe çalıştır:
+## 3. EON'u başlat
+ZIP'i klasöre aç. `baslat.bat` dosyasına çift tıkla ya da:
 
-```powershell
-py -3 eon.py
-```
+`py -3 eon.py`
 
-Daha hafif bir model kullanmak da mümkün. Kurulumun tamamı ve gerekli yerel bağlantı ayarları **[Windows kurulum rehberinde](docs/SETUP_WINDOWS.md)** anlatılıyor.
+Hafif model indirdiysen:
 
-## Sırada ne var?
+`py -3 eon.py --model qwen3:1.7b`
 
-EON'un sonraki adımlarında güvenli araç izinleri, düzenlenebilir yerel hafıza ve sade bir masaüstü arayüzü var. Daha ilerideyse çevrimdışı sesli konuşma, dosyalarla çalışma ve izinli Windows işlemleri hedefleniyor.
+## Komutlar
+- `/yardim` — komutlar
+- `/durum` — yerel model bilgisi
+- `/hesap 2*(3+5)` — kod çalıştırmadan güvenli hesaplama
+- `/temizle` — RAM'deki sohbet geçmişini sil
+- `/cikis` — çıkış
 
-Tüm planı [yol haritasında](docs/ROADMAP.md) görebilirsin.
+## Test
+`py -3 -m unittest discover -s tests -v`
 
-## Nasıl bir proje?
+Testler gerçek modeli kullanmaz. Gerçek Ollama + model kontrolü Windows
+üzerinde ayrıca yapılmalıdır.
 
-EON'da temel fikir basit: **Önce güven, sonra yetenek.**
+## Güvenlik ve gizlilik sınırları
+- EON herhangi bir dış sunucuya bağlanmaz; istemci bağlantısı kaynak
+  kodda `127.0.0.1:11434` adresine sabittir.
+- URL yönlendirmeleri, proxy ya da uzak model çağrıları kullanılmaz.
+- Sadece `qwen3:4b-instruct` ve `qwen3:1.7b` seçilebilir.
+- Sohbet yalnız işlem belleğinde tutulur; EON kendisi dosyaya yazmaz.
+- Ollama'nın kendi logları, işletim sistemi swap/çökme kayıtları veya
+  disk önbelleği için mutlak gizlilik garantisi verilmez.
+- Henüz kalıcı hafıza yok; EON v1.2.1 tasarımına uygun şifreli
+  hafızaya geçmeden özel projelerini yükleme.
+- Yanıtlar küçük yerel model tarafından üretildiği için doğrulama
+  gerektirir. Bu prototip kendi kendine bilgisayarda iş yapamaz.
 
-AI modeli yerel çalışır; harici AI servislerine bağlanmaz. Riskli işlemler, kullanıcı açıkça izin vermeden yapılmamalıdır. Bu izin sistemi henüz geliştirilme aşamasındadır; mevcut prototip zaten dosya değiştiremez veya terminal komutu çalıştıramaz.
+## Sonraki sürüm
+v0.0.2: sunucu tarafı onay durum makinesi ve yalnız önceden
+izinli klasöre not yazma aracı.
+v0.0.3: SQLCipher ve Windows Credential Manager ile şifreli
+veri kaydı; doğru çalışmıyorsa kalıcı kaydı kapalı tut.
+v0.1: React sohbet arayüzü, proje ayrımı ve test edilmiş güvenli MVP.
 
----
-
-[**Sürümler**](https://github.com/bysquizy/EON/releases) · [**Kurulum**](docs/SETUP_WINDOWS.md) · [**Yol haritası**](docs/ROADMAP.md) · [**Güvenlik**](SECURITY.md) · [**Değişiklikler**](CHANGELOG.md)
-
-<sub>EON geliştirme aşamasındadır. Açık kaynak lisansı henüz belirlenmemiştir.</sub>
+Tasarım kaynağı: kullanıcıya ait EON Teknik Tasarım v1.2.1
+(19 Kasım 2026). Yerel model mimarisi güncellenmiştir.

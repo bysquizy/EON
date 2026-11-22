@@ -1,16 +1,17 @@
 # Değişiklikler
 
-EON'un her yeni sürümünde nelerin eklendiğini ve nelerin henüz eksik olduğunu burada paylaşıyoruz.
+## v0.0.2 · 22 Kasım 2026
+
+- Sade, karanlık temalı yerel web arayüzü eklendi.
+- Geçmiş, son cevabı yenileme, kurulu modeli değiştirme, sohbet özeti, yanıt uzunluğu ve oturum istatistikleri eklendi.
+- Windows uygulama başlatıcı eklendi: altı hazır uygulama, yerel yol arama, elle yol kaydetme ve kullanıcı tıklamasıyla açma.
+- Sohbet geçmişi yalnız RAM'de, uygulama yolları ise yerel kullanıcı ayar dosyasında tutuluyor.
+- Model istemcisi ve web arayüzü loopback, origin ve oturum token kontrolüyle sınırlandırıldı.
+- Birim, API ve olumsuz senaryo testleri genişletildi.
+
+**Sınır:** Gerçek Windows cihazında Ollama ve uygulama başlatma uçtan uca henüz doğrulanmadı. EXE yükleyicisi, ses ve şifreli kalıcı sohbet hafızası bulunmuyor.
 
 ## v0.0.1 · 20 Kasım 2026
 
-**İlk prototip yayımlandı.**
-
-- Ollama ile yerel yazılı sohbet eklendi.
-- Kısa süreli sohbet hafızası ve basit hesaplama komutu hazırlandı.
-- Yerel bağlantı sınırları ve 13 otomatik test eklendi.
-- Kurulum, güvenlik ve geliştirme planı belgelendi.
-
-**Henüz geliştirme aşamasında:** Masaüstü arayüzü, ses, şifreli kalıcı hafıza ve Windows otomasyonu.
-
-[İlk sürümün ayrıntıları](https://github.com/bysquizy/EON/releases/tag/v0.0.1)
+- İlk yerel Ollama sohbet prototipi, kısa süreli sohbet belleği ve hesaplama komutu.
+- İlk güvenlik testleri ve kurulum belgeleri.
