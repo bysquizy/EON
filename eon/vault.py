@@ -50,9 +50,11 @@ class Vault:
             self.guard.close()
             self.guard = None
 
-    def backup_legacy(self):
+    def backup_legacy(self, suffix=".pre-v030.dpapi"):
         # Publish a complete encrypted rollback copy before the first schema upgrade.
-        target = self.path.with_suffix(".pre-v030.dpapi")
+        if not self.path.exists():
+            return
+        target = self.path.with_suffix(suffix)
         if target.exists():
             return
         fd, temp = tempfile.mkstemp(dir=self.path.parent)

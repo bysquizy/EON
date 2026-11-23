@@ -62,7 +62,7 @@ class EonHandler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
-        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
         self.end_headers()
 
     def _json(self, status: int, value: dict) -> None:
@@ -95,7 +95,7 @@ class EonHandler(BaseHTTPRequestHandler):
                                     "models": self.server.service.models(),
                                     "apps": self.server.service.apps()})
         if path == "/api/health":
-            return self._json(200, {"status": "ok", "version": "0.4.1"})
+            return self._json(200, {"status": "ok", "version": "0.5.0"})
         if path == "/api/state":
             return self._json(200, self.server.service.snapshot())
         if path == "/api/models":
@@ -128,7 +128,13 @@ class EonHandler(BaseHTTPRequestHandler):
             return self._json(415, {"error": "JSON istek gerekli."})
         try:
             content_length = int(self.headers.get("Content-Length", "-1"))
-            limit = 24*1024*1024 if self.path == "/api/backup/restore" else 16000
+            route_path = urlsplit(self.path).path
+            if route_path == "/api/backup/restore":
+                limit = 24 * 1024 * 1024
+            elif route_path in ("/api/knowledge", "/api/stream", "/api/studio", "/api/actions"):
+                limit = 12 * 1024 * 1024
+            else:
+                limit = 64000
             if not 0 <= content_length <= limit:
                 return self._json(413, {"error": "İstek çok büyük."})
             if self.headers.get("Transfer-Encoding"):
@@ -153,10 +159,14 @@ class EonHandler(BaseHTTPRequestHandler):
                     self.wfile.flush()
                 try:
                     result = service.generate(text=payload.get("text"), chat_id=payload["id"],
-                                              key=key, edit_index=payload.get("index"), destination=payload.get("destination", "ollama"),
+                                              key=key, edit_index=payload.get("index"),
+                                              destination=payload.get("destination", "ollama"),
+                                              images=payload.get("images"),
+                                              research=payload.get("research"),
+                                              profile=payload.get("profile"),
                                               emit=lambda part: event({"delta": part}),
                                               ready=lambda: event({"ready": True}))
-                    event({"state": result["state"]})
+                    event({"state": result["state"], "sources": result.get("sources", [])})
                 except (ValueError, LocalModelError) as exc:
                     event({"error": str(exc)})
                 except OSError:
@@ -203,7 +213,27 @@ class EonHandler(BaseHTTPRequestHandler):
             elif route == "/api/preferences":
                 result = service.preferences(payload.get("instructions"), payload.get("context"), payload.get("output"))
             elif route == "/api/memory":
-                result = service.memory_edit(payload.get("id", ""), payload.get("value"))
+                result = service.memory_edit(
+                    payload.get("id", ""),
+                    payload.get("value"),
+                    category=payload.get("category", "genel"),
+                    source=payload.get("source", "kullanıcı"),
+                    project=payload.get("project", ""),
+                    force=payload.get("force") is True,
+                    replace_id=payload.get("replace_id", ""),
+                )
+            elif route == "/api/knowledge":
+                result = service.knowledge_action(payload)
+            elif route == "/api/actions":
+                result = service.action_center(payload)
+            elif route == "/api/studio":
+                result = service.studio_action(payload)
+            elif route == "/api/productivity":
+                result = service.productivity_action(payload)
+            elif route == "/api/voice":
+                result = service.voice_action(payload)
+            elif route == "/api/router":
+                result = service.router_action(payload)
             elif route == "/api/chats/rename":
                 result = service.rename(payload.get("id"), payload.get("title"))
             elif route == "/api/message":

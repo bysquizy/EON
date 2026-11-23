@@ -15,10 +15,9 @@ CHECK_EXT = {'.py', '.md', '.html', '.css', '.js', '.cjs', '.yml', '.yaml', '.js
 
 def main() -> int:
     try:
-        names = [Path(p.decode('utf-8')) for p in subprocess.check_output(['git', 'ls-files', '-z']).split(b'\0') if p]
+        names = [Path(p.decode('utf-8')) for p in subprocess.check_output(['git', 'ls-files', '-z'], stderr=subprocess.DEVNULL).split(b'\0') if p]
     except (OSError, subprocess.CalledProcessError):
-        print('Run inside a Git repository.')
-        return 2
+        names = [p for p in Path('.').rglob('*') if p.is_file() and '__pycache__' not in p.parts and '.git' not in p.parts]
     findings = []
     for file in names:
         if file.suffix.lower() not in CHECK_EXT and file.name not in ('VERSION', '.gitignore'):

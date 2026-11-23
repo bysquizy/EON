@@ -10,6 +10,8 @@ EON küçük, güvenilir ve test edilebilir sürümler halinde gelişiyor.
 | v0.1.0 | Yayınlandı | Windows şifreli kayıt, seçici hafıza ve akışlı sohbet |
 | v0.2.0 | Ön sürüm | Projeler, çalışma modları, komut paleti ve yerel arama |
 | v0.3.0 | Ön sürüm | İzinli hibrit sohbet, Ollama belleği ve yeni arayüz |
+| v0.4.1 | Yayınlandı | Kalıcı Gemini izin kapsamı, tek örnek kilidi ve şifreli yedek |
+| v0.5.0 | Yayınlandı | Projects 2.0, Bilgi Tabanı (FTS5), Actions, Studio, Research, Memory 2.0, Vision, Görevler ve Command Center |
 
 Sonraki hedefler arasında çevrimdışı ses ve imzalı Windows yükleyicisi bulunur.
 

@@ -1,6 +1,8 @@
 'use strict';
 
 let activeStream = null;
+let pendingVisionImages = [];
+
 function action(label, handler) {
   const button = document.createElement('button');
   button.type = 'button';
@@ -33,22 +35,32 @@ function markdown(root, text) {
       const wrap=document.createElement('div');wrap.className='table-scroll';wrap.append(table);root.append(wrap);
       list=null;continue;
     }
-    if (/^\s*```/.test(line)) {
+    const fence = /^\s*```([A-Za-z0-9_+#.-]{0,24})/.exec(line);
+    if (fence) {
       if (code) code = null;
       else {
+        const lang = (fence[1] || 'code').toLowerCase();
+        const header = document.createElement('div');
+        header.className = 'code-header';
+        const badge = document.createElement('span');
+        badge.className = 'code-lang';
+        badge.textContent = lang;
         const pre = document.createElement('pre');
         code = document.createElement('code');
         const block = code;
-        root.append(action('Kodu kopyala', () => navigator.clipboard.writeText(block.textContent.replace(/\n$/, ''))));
+        header.append(badge, action('Kodu kopyala', () => {
+          navigator.clipboard.writeText(block.textContent.replace(/\n$/, ''));
+          toast('Kod panoya kopyalandı.');
+        }));
         pre.append(code);
-        root.append(pre);
+        root.append(header, pre);
       }
       list = null;
       continue;
     }
     if (code) {
-      for(const token of line.split(/(\b(?:def|class|return|if|else|for|while|function|const|let|import|from|True|False|null)\b)/g)) {
-        if (/^(def|class|return|if|else|for|while|function|const|let|import|from|True|False|null)$/.test(token)) {
+      for(const token of line.split(/(\b(?:def|class|return|if|else|elif|for|while|function|const|let|var|async|await|import|from|export|try|catch|finally|True|False|None|null|undefined|SELECT|FROM|WHERE)\b)/g)) {
+        if (/^(def|class|return|if|else|elif|for|while|function|const|let|var|async|await|import|from|export|try|catch|finally|True|False|None|null|undefined|SELECT|FROM|WHERE)$/.test(token)) {
           const mark=document.createElement('span');mark.className='code-keyword';mark.textContent=token;code.append(mark);
         } else code.append(token);
       }
@@ -111,9 +123,15 @@ async function streamAnswer(text, index = null) {
     if (follow) log.scrollTop = log.scrollHeight;
   }
   try {
+    const research = el('researchToggle')?.getAttribute('aria-pressed') === 'true';
+    const profile = el('profileSelect')?.value || 'balanced';
+    const imagesToSend = pendingVisionImages.map(img => ({mime: img.mime, data: img.data}));
+    pendingVisionImages = [];
+    if (typeof renderVisionBar === 'function') renderVisionBar();
     const response = await fetch('/api/stream', {method:'POST',
       headers:{'Content-Type':'application/json','X-EON-Token':csrfToken,'X-EON-Access':sessionAccess},
-      body:JSON.stringify({key, id, text, index, destination:state.cloud_model || "ollama"})});
+      body:JSON.stringify({key, id, text, index, destination:state.cloud_model || "ollama",
+        images: imagesToSend.length ? imagesToSend : undefined, research, profile})});
     if (!response.ok) throw new Error('Sohbet bağlantısı kurulamadı. Yeniden bağlanmayı dene.');
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
     let pending = '';
@@ -165,21 +183,83 @@ function fillPreferences() {
 }
 function renderNotes() {
   const root = el('notes');
+  if (!root) return;
   root.replaceChildren();
+  const scopeSelect = el('memoryProjectScope');
+  if (scopeSelect) {
+    const prev = scopeSelect.value;
+    scopeSelect.replaceChildren(new Option('Genel (Projesiz)', ''), ...Object.entries(state.projects || {}).map(([k, v]) => new Option(v.name, k)));
+    if ([...scopeSelect.options].some(o => o.value === prev)) scopeSelect.value = prev;
+  }
+  const metaMap = state.memory_meta || {};
   for (const [id,value] of Object.entries(state.memory)) {
-    if (el('memorySearch') && !value.toLocaleLowerCase('tr').includes(el('memorySearch').value.trim().toLocaleLowerCase('tr'))) continue;
+    const m = metaMap[id] || {};
+    const searchVal = el('memorySearch')?.value.trim().toLocaleLowerCase('tr') || '';
+    const searchable = (value + ' ' + (m.category || '') + ' ' + (state.projects?.[m.project]?.name || '')).toLocaleLowerCase('tr');
+    if (searchVal && !searchable.includes(searchVal)) continue;
     const row = document.createElement('div');
     row.className = 'note-row';
-    const body = document.createElement('span');
-    body.textContent = value;
+    const body = document.createElement('div');
+    body.className = 'note-body';
+    const txt = document.createElement('span');
+    txt.textContent = value;
+    const badgeWrap = document.createElement('small');
+    badgeWrap.className = 'note-meta-badges';
+    const projName = m.project && state.projects?.[m.project] ? state.projects[m.project].name : 'Genel';
+    const createdStr = m.created_at ? new Date(m.created_at * 1000).toLocaleDateString() : '';
+    const usedStr = m.last_used_at ? ' · Son kullanım: ' + new Date(m.last_used_at * 1000).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
+    badgeWrap.textContent = `[${m.category || 'genel'} · ${projName} · Kaynak: ${m.source || 'kullanıcı'}${createdStr ? ' · ' + createdStr : ''}${usedStr}]`;
+    body.append(txt, badgeWrap);
     row.append(body, action('Düzenle', async () => {
       const changed = prompt('Hafıza kaydını düzenle', value);
-      if (changed?.trim()) renderState(await request('/api/memory', {id,value:changed}));
+      if (changed?.trim()) renderState(await request('/api/memory', {id, value:changed, category:m.category, project:m.project}));
     }), action('Sil', async () => {
-      if (confirm('Hafıza kaydı silinsin mi?')) renderState(await request('/api/memory', {id,value:null}));
+      if (confirm('Hafıza kaydı silinsin mi?')) renderState(await request('/api/memory', {id, value:null}));
     }));
     root.append(row);
   }
+}
+
+function showMemoryConflict(conflictData) {
+  const box = el('memoryConflictBox');
+  if (!box) return;
+  box.replaceChildren();
+  box.classList.remove('hidden');
+  const title = document.createElement('strong');
+  title.textContent = 'Çelişen veya benzer hafıza kaydı tespit edildi:';
+  box.append(title);
+  for (const item of conflictData.conflicts) {
+    const p = document.createElement('p');
+    p.textContent = `Mevcut: "${item.value}" (${item.reason}) ↔ Yeni: "${conflictData.proposed}"`;
+    const replaceBtn = action('Mevcut kaydı bununla değiştir', async () => {
+      box.classList.add('hidden');
+      renderState(await request('/api/memory', {
+        value: conflictData.proposed,
+        category: conflictData.category,
+        source: conflictData.source,
+        project: conflictData.project,
+        replace_id: item.id,
+        force: true,
+      }));
+      el('newNote').value = '';
+      toast('Hafıza kaydı güncellendi.');
+    });
+    box.append(p, replaceBtn);
+  }
+  const keepBoth = action('Her ikisini de ayrı kayıt olarak tut', async () => {
+    box.classList.add('hidden');
+    renderState(await request('/api/memory', {
+      value: conflictData.proposed,
+      category: conflictData.category,
+      source: conflictData.source,
+      project: conflictData.project,
+      force: true,
+    }));
+    el('newNote').value = '';
+    toast('Yeni hafıza kaydı eklendi.');
+  });
+  const cancelBtn = action('İptal (Mevcut kaydı koru)', () => box.classList.add('hidden'));
+  box.append(keepBoth, cancelBtn);
 }
 
 function wireLibrary() {
@@ -194,8 +274,16 @@ function wireLibrary() {
     toast('Model tercihleri güncellendi.');
   });
   bind('addNote', async () => {
-    renderState(await request('/api/memory', {value:el('newNote').value}));
-    el('newNote').value = '';
+    const category = el('memoryCategory')?.value || 'genel';
+    const project = el('memoryProjectScope')?.value || '';
+    const res = await request('/api/memory', {value:el('newNote').value, category, project, source:'kullanıcı'});
+    renderState(res);
+    if (res.memory_conflict) {
+      showMemoryConflict(res.memory_conflict);
+    } else {
+      el('memoryConflictBox')?.classList.add('hidden');
+      el('newNote').value = '';
+    }
   });
   const format = new Intl.DateTimeFormat(undefined, {day:'numeric', month:'short',hour:'2-digit',minute:'2-digit'});
   let timer;

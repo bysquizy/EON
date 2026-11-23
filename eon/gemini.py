@@ -14,10 +14,31 @@ ERRORS = {400:"İstek veya anahtar geçersiz.",401:"API anahtarını kontrol et.
 
 
 class Gemini:
-    def __init__(self, key, model="", output=320, factory=http.client.HTTPSConnection):
+    def __init__(self, key, model="", output=320, factory=http.client.HTTPSConnection,
+                 profile="balanced", search=False):
         if not key:
             raise LocalModelError("Önce Gemini anahtarını ekle.")
         self.key, self.model, self.output, self.factory = key, model, output, factory
+        self.profile = profile if profile in ("fast", "balanced", "deep") else "balanced"
+        self.search = bool(search)
+        self.usage = None
+        self.sources = []
+        self.tokens_per_second = None
+        self.raw_parts = []
+
+    @staticmethod
+    def capabilities(model_name=""):
+        low = (model_name or "").casefold()
+        is_thinking = any(k in low for k in ("2.5", "3.", "3-", "4", "thinking", "pro", "flash"))
+        return {
+            "provider": "gemini",
+            "streaming": True,
+            "vision": True,
+            "thinking": is_thinking,
+            "embeddings": False,
+            "web_search": True,
+            "context_window": 1048576,
+        }
 
     def _request(self, method, path, consume, body=None, job=None):
         conn = self.factory("generativelanguage.googleapis.com", timeout=45)
@@ -79,10 +100,37 @@ class Gemini:
     def stream(self, messages, emit, job):
         if not MODEL.fullmatch(self.model):
             raise LocalModelError("Gemini modeli geçersiz.")
-        payload = {"systemInstruction":{"parts":[{"text":messages[0]["content"]}]},
-                   "contents":[{"role":"model" if m["role"]=="assistant" else "user",
-                                "parts":[{"text":m["content"]}]} for m in messages[1:]],
-                   "generationConfig":{"maxOutputTokens":self.output}}
+        contents = []
+        for m in messages[1:]:
+            role = "model" if m["role"] == "assistant" else "user"
+            if isinstance(m.get("gemini_parts"), list) and m["gemini_parts"]:
+                parts = list(m["gemini_parts"])
+            else:
+                parts = [{"text": m["content"]}]
+                for img in m.get("inline_images", []) or ():
+                    if isinstance(img, dict) and img.get("mime") and img.get("data"):
+                        parts.append({"inlineData": {"mimeType": img["mime"], "data": img["data"]}})
+            contents.append({"role": role, "parts": parts})
+        gen_cfg = {"maxOutputTokens": self.output}
+        low_model = self.model.casefold()
+        if self.profile == "fast":
+            gen_cfg["temperature"] = 0.35
+            if "2.5-flash" in low_model:
+                gen_cfg["thinkingConfig"] = {"thinkingBudget": 0}
+        elif self.profile == "deep":
+            gen_cfg["temperature"] = 0.65
+            if "2.5" in low_model:
+                gen_cfg["thinkingConfig"] = {"thinkingBudget": min(2048, max(512, self.output // 2))}
+        payload = {"systemInstruction": {"parts": [{"text": messages[0]["content"]}]},
+                   "contents": contents,
+                   "generationConfig": gen_cfg}
+        if self.search:
+            payload["tools"] = [{"googleSearch": {}}]
+        self.sources = []
+        self.usage = None
+        self.raw_parts = []
+        seen_urls = set()
+
         def read(reply):
             total = 0
             finished = False
@@ -92,20 +140,64 @@ class Gemini:
                 if not line:
                     break
                 total += len(line)
-                if len(line)>131072 or total>2*1024*1024:
+                if len(line) > 131072 or total > 4 * 1024 * 1024:
                     raise LocalModelError("Gemini yanıt sınırını aştı.")
                 if not line.startswith(b"data:"):
                     continue
                 data = json.loads(line[5:])
                 if "error" in data:
                     raise LocalModelError("Gemini üretimi kesildi.")
+                usage_meta = data.get("usageMetadata")
+                if isinstance(usage_meta, dict):
+                    prompt_tok = usage_meta.get("promptTokenCount")
+                    cand_tok = usage_meta.get("candidatesTokenCount")
+                    thought_tok = usage_meta.get("thoughtsTokenCount")
+                    total_tok = usage_meta.get("totalTokenCount")
+                    self.usage = {
+                        "input_tokens": prompt_tok if type(prompt_tok) is int else None,
+                        "output_tokens": cand_tok if type(cand_tok) is int else None,
+                        "thought_tokens": thought_tok if type(thought_tok) is int else None,
+                        "total_tokens": total_tok if type(total_tok) is int else None,
+                        "measured": True,
+                    }
                 for candidate in data.get("candidates", []):
                     for part in candidate.get("content", {}).get("parts", []):
-                        if part.get("text") and not part.get("thought"):
-                            emit(part["text"])
+                        if isinstance(part, dict):
+                            if part.get("thoughtSignature") or part.get("thought") or part.get("text"):
+                                clean_part = {}
+                                if isinstance(part.get("text"), str):
+                                    clean_part["text"] = part["text"]
+                                if part.get("thought") is True:
+                                    clean_part["thought"] = True
+                                if isinstance(part.get("thoughtSignature"), str):
+                                    clean_part["thoughtSignature"] = part["thoughtSignature"]
+                                if clean_part:
+                                    self.raw_parts.append(clean_part)
+                            if part.get("text") and not part.get("thought"):
+                                emit(part["text"])
+                    gm = candidate.get("groundingMetadata")
+                    if isinstance(gm, dict):
+                        queries = [q for q in gm.get("webSearchQueries", []) if isinstance(q, str)]
+                        for chunk in gm.get("groundingChunks", []) or ():
+                            if not isinstance(chunk, dict):
+                                continue
+                            web = chunk.get("web")
+                            if isinstance(web, dict):
+                                uri = web.get("uri", "")
+                                title = web.get("title", "") or uri
+                                if isinstance(uri, str) and uri.startswith(("https://", "http://")) and uri not in seen_urls:
+                                    seen_urls.add(uri)
+                                    self.sources.append({
+                                        "kind": "web",
+                                        "title": str(title)[:200],
+                                        "uri": uri[:1024],
+                                        "queries": queries[:5],
+                                    })
                     reason = candidate.get("finishReason")
                     if reason == "MAX_TOKENS":
                         raise LocalModelError("Gemini yanıt sınırına ulaştı; yanıt tamamlanmadı. Daha kısa bir istem veya kısa yanıt modu dene.")
+                    if reason in ("SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"):
+                        raise LocalModelError("Gemini güvenlik veya içerik politikası nedeniyle yanıtı durdurdu.")
                     if reason == "STOP":
                         finished = True
             if not finished:

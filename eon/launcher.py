@@ -170,10 +170,20 @@ class ApplicationRegistry:
         dirs = shortcut_search_directories()
         seen = 0
         for directory in dirs:
-            if not directory.is_dir():
+            try:
+                if not directory.is_dir():
+                    continue
+            except OSError:
                 continue
-            for root, subdirs, filenames in os.walk(directory, followlinks=False):
-                subdirs[:] = [name for name in subdirs if not Path(root, name).is_symlink()]
+            for root, subdirs, filenames in os.walk(directory, followlinks=False, onerror=lambda _: None):
+                kept = []
+                for name in subdirs:
+                    try:
+                        if not Path(root, name).is_symlink():
+                            kept.append(name)
+                    except OSError:
+                        pass
+                subdirs[:] = kept
                 for filename in sorted(filenames):
                     seen += 1
                     if seen > 6000:

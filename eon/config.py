@@ -7,6 +7,11 @@ OLLAMA_PORT = 11434
 DEFAULT_MODEL = "qwen3:4b-instruct"
 MODEL_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._/-]{0,119}(?::[A-Za-z0-9._-]{1,80})?$")
 OUTPUT_LIMITS = {"kisa": 128, "normal": 320, "detayli": 720}
+PROFILES = {
+    "fast": {"name": "Hızlı", "temperature": 0.35, "thinking": False},
+    "balanced": {"name": "Dengeli", "temperature": 0.55, "thinking": False},
+    "deep": {"name": "Derin Düşünme", "temperature": 0.65, "thinking": True},
+}
 STYLE_GUIDANCE = {
     "kisa": "Çok kısa yanıtla. Gereksiz açıklama yapma.",
     "normal": "Açık ve doğal biçimde, gerektiği kadar ayrıntı ver.",

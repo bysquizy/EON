@@ -34,3 +34,11 @@ Yüklü model ve VRAM miktarları sorgu anında Ollama API’sinden gelir. Model
 ## v0.4.1 Gemini ve Windows başlatma
 
 Gemini bulut izni ve paylaşım kapsamı xtras.gemini alanında, şifreli kasa zarfıyla birlikte saklanır. Şema numarası değişmez; eski şema 3 kayıtlarında alan bulunmaz ve paylaşım kapalı kalır. Gemini model seçimi ilk erişilebilir Flash adını tercih eder. SSE MAX_TOKENS akışı hata verir ve sohbet mutasyonu gerçekleşmeden durur. Windows mutex adı kullanıcı profil yolunun SHA-256 özetiyle oluşturulur; erişim URL'si ikinci örneğe aktarılmaz. --silent, pyw/pythonw kullanan başlatıcılar içindir.
+
+
+## v0.5.0 Çalışma Ortamı Modülleri
+
+- **Bilgi Tabanı (`eon/knowledge.py`):** TXT, MD, CSV, DOCX, XLSX ve PDF belgelerini yerel olarak ayrıştırır, bölümlere ayırır ve bellek içi SQLite FTS5 (`bm25`) tablosunda indeksler. İlk yükseltmede mevcut şema 3 kasası `.pre-v050.dpapi` olarak yedeklenir ve yeni veriler kasa zarfındaki `v050` alanı altında şifrelenir.
+- **Güvenli Eylemler (`eon/actions.py`):** İzinli klasör doğrulaması, sembolik link/junction (`FILE_ATTRIBUTE_REPARSE_POINT`) engeli, tehlikeli uzantı filtresi, önizleme jetonu, onay sonrası atomik dosya yazımı, önceki sürüme geri alma (`rollback_stack`) ve maskelenmiş denetim günlüğü (`audit_log`) sağlar.
+- **Belge Üretimi (`eon/studio_gen.py`):** Standart kütüphane `zipfile`/`xml` ve PDF 1.4 nesne yapısıyla geçerli DOCX, XLSX, PDF, CSV, MD ve TXT çıktıları üretir.
+- **Üretkenlik, Görsel ve Sistem Sağlığı (`eon/productivity.py`):** PNG/JPEG/WebP ikili başlık ve boyut doğrulaması, Pomodoro ve görev yönetimi, `.ics` takvim dönüşümü, Windows SAPI TTS süreç kontrolü ve `GlobalMemoryStatusEx` sistem RAM ölçümünü içerir.

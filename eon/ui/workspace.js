@@ -125,14 +125,21 @@ function chatOptions() {
   const mode = field(body,'Mod','select');
   options(mode,named(state.modes),chat.mode);
   const local = field(body,'Sohbetin yerel modeli','select');
+  const profile = field(body,'Çalışma profili','select');
   const length = field(body,'Yanıt uzunluğu','select');
   const opts=state.extras.chat_options[chat.id] || {};
   options(local,[['','Proje veya genel seçim'],...installedModels.map(name=>[name,name])],opts.model||'');
+  options(profile,[['balanced','Dengeli'],['fast','Hızlı'],['deep','Derin Düşünme']],opts.profile||'balanced');
   options(length,[['','Genel ayar'],['kisa','Kısa'],['normal','Normal'],['detayli','Detaylı']],opts.style||'');
   body.append(action('Uygula', async () => {
     await library('configure',{id:chat.id, project:project.value, mode:mode.value});
-    await extra({kind:'chat',id:chat.id,model:local.value,style:length.value});
+    await extra({kind:'chat',id:chat.id,model:local.value,style:length.value,profile:profile.value});
     el('libraryDialog').close();
+  }), action('Studio ile DOCX/PDF/XLSX üret', () => {
+    el('libraryDialog').close();
+    const lastReply = [...(state.history || [])].reverse().find(m => m.role === 'assistant');
+    if (typeof openInStudio === 'function') openInStudio(lastReply?.content || '', chat.title);
+    else showPage('studio');
   }), action('Pano yardımcısı', clipboardDialog), action('Markdown indir',()=>downloadChat('md')),
       action('Metin indir',()=>downloadChat('txt')));
 }
@@ -184,13 +191,17 @@ function commandPalette() {
   const query = el('commandQuery');
   const root = el('commandResults');
   const commands = [
-    ['Yeni sohbet', newChat], ['Sohbet geçmişi',()=>showPage('history')],
+    ['Yeni sohbet', newChat], ['Projeler çalışma alanı',()=>showPage('projects')],
+    ['Bilgi Tabanı (Belgeler & RAG)',()=>showPage('kb')], ['EON Studio (DOCX/PDF/XLSX üret)',()=>showPage('studio')],
+    ['EON Actions (Güvenli Araçlar)',()=>showPage('actions')], ['Görevler ve Odak (Pomodoro)',()=>showPage('tasks')],
+    ['Sistem Sağlığı (Command Center)',()=>showPage('health')], ['Sohbet geçmişi',()=>showPage('history')],
     ['Favoriler',()=>{el('favoritesOnly').checked=true; el('chatSearch').value=''; el('projectFilter').value='*'; showPage('history');}],
     ['Sohbet seçenekleri',chatOptions], ['Projeleri yönet',()=>manage('project')], ['Modları yönet',()=>manage('mode')],
     ['Pano yardımcısı',clipboardDialog], ['Ayarlar',()=>showPage('settings')], ['Hafıza',()=>showPage('memory')],
     ...named(state.projects).map(([id,name])=>['Proje · '+name,()=>{
       el('projectFilter').value=id; el('chatSearch').value='';el('favoritesOnly').checked=false;showPage('history');
     }]),
+    ...(state.knowledge_docs || []).map(d=>['Belge · '+d.name,()=>showPage('kb')]),
     ...Object.values(state.extras.prompts).map(p=>['Şablon · '+p.name,()=>applyPrompt(p.text)]),
     ...state.conversations.map(c=>['Sohbet · '+c.title,()=>openChat(c.id)]),
     ...installedModels.map(name=>['Model · '+name,()=>changeModel(name)]),

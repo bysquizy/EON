@@ -16,3 +16,9 @@ Hava durumu kurulumunda şehir seçimi çevrimdışıdır. Kullanıcı izin veri
 ## Gemini aktarım izni v0.4.1
 
 Gemini sohbetleri için kalıcı bulut izni, model konuşma bağlamını kullanabilmeden önce açıkça istenir ve DPAPI sohbet kasasında saklanır. Genel hafıza ve özel yönergeler ayrı seçimlerdir. Projeye bağlı sohbetlerde yalnız o projenin yönergeleri ve seçilmiş notları kullanılabilir; başka projelerin içerikleri gönderilmez. İzin Ayarlar ekranından kapatılabilir. v0.4.0 kasaları paylaşımı etkinleştirmeden açılır.
+
+## v0.5.0 Bilgi Tabanı, Araştırma ve Görsel Gizliliği
+
+- **Yerel Bilgi Tabanı:** İçe aktarılan belgeler yerel olarak ayrıştırılır ve DPAPI kasasında şifrelenir. Gemini sohbetlerinde proje belgelerinden bulunan parçalar yalnızca hem genel yönerge paylaşımı hem de ilgili projenin **Bilgi Tabanı bulut paylaşımı** (`share_docs`) açıkça işaretlenmişse gönderilir.
+- **Kaynaklı Araştırma (Grounding):** Google Search Grounding yalnız onaylı Gemini sohbetlerinde kullanıcı Araştırma düğmesini etkinleştirdiğinde çalışır. Yerel Ollama sohbetlerinde gizli web araması yapılmaz.
+- **Görseller (Vision) ve İstek Günlüğü:** Sohbete eklenen görseller yerel modelde cihaz dışına çıkmaz; Gemini sohbetinde yalnız bulut izni açıkken gönderilir. Command Center istek geçmişi varsayılan olarak istem veya yanıt metinlerini kaydetmez; yalnızca zaman, süre, sağlayıcı, model ve token sayısını tutar.

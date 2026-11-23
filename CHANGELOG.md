@@ -1,5 +1,15 @@
 # Değişiklikler
 
+## v0.5.0
+
+- **EON Projects 2.0 ve Yerel Bilgi Tabanı:** Proje başına çalışma notları, model/profil tercihleri, hafıza kapsamı ve TXT, MD, PDF, DOCX, CSV, XLSX belge içe aktarma. SQLite FTS5 (BM25) ve isteğe bağlı Ollama `/api/embed` vektör araması ile yanıtlarda dosya ve sayfa/bölüm kaynağı gösterimi.
+- **EON Actions:** İzinli yerel klasörlerde çalışan modüler beceri sistemi (`search_files`, `read_file`, `summarize_file`, `create_folder`, `write_text_file`, `rename_file`, `open_app`). Yazma/değiştirme işlemlerinde önizleme, açık onay, yedekli geri alma (rollback), sembolik link/junction ve tehlikeli uzantı engeli ile yerel denetim günlüğü.
+- **EON Studio:** Sohbet yanıtlarından ve tablolardan harici kütüphane zorunluluğu olmadan standart DOCX, PDF, XLSX, CSV, Markdown ve TXT belge üretimi; önizleme ve basit grafik çizimi.
+- **EON Research:** Onaylı Gemini bulut sohbetlerinde isteğe bağlı Google Search Grounding (`googleSearch`) desteği ve doğrulanmış `groundingMetadata` web kaynaklarının gösterimi.
+- **EON Memory 2.0:** Hafıza kayıtlarına kategori, kaynak, proje kapsamı, tarihçe ve çelişen bilgi algılama/çözümleme akışı eklendi.
+- **EON Model Router, Vision ve Voice:** Hızlı, Dengeli ve Derin Düşünme profilleri; model yetenek keşfi; gerçek token kullanımı (`usageMetadata` / `eval_count`) ve düşünme imzası (`thoughtSignature`) korunumu; PNG/JPEG/WebP görsel ekleme ve doğrulama; bas-konuş ses girişi ve Windows SAPI yerel seslendirme.
+- **EON Focus & Tasks ve Command Center:** Pomodoro sayacı, görev listesi, `.ics` takvim içe/dışa aktarımı, Windows sistem RAM'i ile Ollama model belleğini ayrı gösteren sistem sağlık ekranı ve`.pre-v050.dpapi` otomatik kasa yedeği.
+
 ## v0.4.1
 
 - Gemini sohbetlerinde EON'un kişiliği, aktif proje yönergeleri ve tercih edilen model kullanılır. Açıkça seçilen hafıza/yönergeler DPAPI kasasında saklanan izne bağlıdır; eski kasalar varsayılan olarak paylaşımı etkinleştirmez.

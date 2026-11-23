@@ -1,15 +1,15 @@
 # EON'u Windows'ta çalıştırmak
 
-EON v0.4.1, Python ile çalışan yerel bir tarayıcı uygulamasıdır. Henüz `.exe` kurulum dosyası yoktur.
+EON v0.5.0, Python ile çalışan yerel bir tarayıcı çalışma ortamıdır. Henüz `.exe` kurulum dosyası yoktur.
 
 ### Kurulum
 
 1. [Python 3.10+](https://www.python.org/downloads/windows/) kur.
 2. Yerel model kullanacaksan [Ollama](https://ollama.com/download/windows) kur, `OLLAMA_NO_CLOUD=1` ve `OLLAMA_HOST=127.0.0.1:11434` ayarlarını yapıp `ollama pull qwen3:4b-instruct` çalıştır. Gemini için Ollama gerekmez ve EON onu otomatik başlatmaz.
-3. GitHub'da **Releases → v0.4.1 → Source code (zip)** arşivini indir ve klasöre çıkar.
+3. GitHub'da **Releases → v0.5.0 → Source code (zip)** arşivini indir ve klasöre çıkar.
 4. `baslat.bat` dosyasına çift tıkla. Alternatif: klasörde `py -3 eon.py`. İsteğe bağlı `baslat.bat --silent` konsolsuz başlatır; başlangıç hataları Windows uyarısı olarak gösterilir.
 
-Terminalde `EON v0.4.1 hazır. Yerel adres: http://127.0.0.1:...` yazdığında arayüz tarayıcıda açılır. Terminali açık tut. EON'u durdurmak için **Ctrl+C**.
+Terminalde `EON v0.5.0 hazır. Yerel adres: http://127.0.0.1:...` yazdığında arayüz tarayıcıda açılır. Terminali açık tut. EON'u durdurmak için **Ctrl+C**.
 
 ### “Failed to fetch” / bağlantı kesildi
 

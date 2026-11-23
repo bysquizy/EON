@@ -10,12 +10,34 @@ let weatherLoaded = false, weatherEpoch = 0;
 function renderHybrid() {
   const metrics = state.metrics || {};
   const chat = currentChat();
-  const local = state.extras.chat_options[chat.id]?.model || state.extras.projects[chat.project]?.model || state.model;
+  const chatOpts = state.extras.chat_options[chat.id] || {};
+  const projOpts = state.extras.projects[chat.project] || {};
+  const local = chatOpts.model || projOpts.model || state.model;
+  const activeProfile = chatOpts.profile || projOpts.profile || 'balanced';
+  const profileLabel = state.profiles?.[activeProfile]?.name || 'Dengeli';
+  const tokLabel = metrics.measured_tokens && metrics.output_tokens != null
+    ? `${metrics.output_tokens} tok (gerçek)`
+    : metrics.context_estimate != null ? `~${metrics.context_estimate} tok (tahmin)` : '';
   el('providerBadge').textContent = (state.cloud_model ? 'Google Gemini · '+state.cloud_model.replace('models/','') : 'Ollama · '+local)
-    + (metrics.seconds != null ? ' · Son yanıt '+metrics.seconds+' sn' : '');
+    + ' · ' + profileLabel
+    + (metrics.seconds != null ? ' · '+metrics.seconds+' sn' : '')
+    + (tokLabel ? ' · '+tokLabel : '');
   el('providerBadge').title = metrics.time ? new Date(metrics.time*1000).toLocaleString()+
-    ' · '+metrics.model+' · İlk parça '+(metrics.first ?? '—')+' sn · '+(metrics.rate ?? '—')+' token/sn · Yaklaşık bağlam '+(metrics.context_estimate ?? '—')+' token' : '';
+    ' · '+metrics.model+' · İlk token '+(metrics.first ?? '—')+' sn · '+(metrics.rate ?? '—')+' token/sn · '+
+    (metrics.measured_tokens ? `Girdi: ${metrics.input_tokens ?? '—'}, Çıktı: ${metrics.output_tokens ?? '—'} (gerçek ölçüm)` : `Yaklaşık bağlam: ${metrics.context_estimate ?? '—'} token (tahmin)`) : '';
   el('modelSelect').hidden = !!state.cloud_model;
+  if (el('profileSelect')) el('profileSelect').value = activeProfile;
+  const resBtn = el('researchToggle');
+  if (resBtn) {
+    const resOn = Boolean(chatOpts.research && state.cloud_model);
+    resBtn.setAttribute('aria-pressed', String(resOn));
+    resBtn.classList.toggle('active', resOn);
+  }
+  const pBadge = el('privacySidebarBadge');
+  if (pBadge) {
+    pBadge.firstChild.textContent = state.cloud_model && state.cloud_allowed ? 'HYBRID' : 'LOCAL';
+    pBadge.title = state.cloud_model && state.cloud_allowed ? 'Bu sohbette onaylı Gemini bulut bağlantısı etkin' : 'Tam yerel çalışma modu';
+  }
   if (!disconnected) el('connectionText').textContent = state.cloud_model
     ? 'Gemini · '+(state.cloud_allowed ? 'onaylı' : 'onay bekliyor')
     : installedModels.length ? 'Yerel model hazır' : 'Yerel model bekleniyor';

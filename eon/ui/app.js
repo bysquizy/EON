@@ -111,6 +111,12 @@ function showPage(name) {
   document.querySelectorAll('.nav-button').forEach(btn => btn.classList.toggle('selected', btn.dataset.view === name));
   if (name === 'history') renderHistory();
   if (name === 'settings' && state) { renderStats(); fillPreferences(); }
+  if (name === 'projects' && typeof renderProjectsPage === 'function') renderProjectsPage();
+  if (name === 'kb' && typeof renderKbPage === 'function') renderKbPage();
+  if (name === 'studio' && typeof renderStudioPage === 'function') renderStudioPage();
+  if (name === 'actions' && typeof renderActionsPage === 'function') renderActionsPage();
+  if (name === 'tasks' && typeof renderTasksPage === 'function') renderTasksPage();
+  if (name === 'health' && typeof renderHealthPage === 'function') renderHealthPage();
   if (name === 'apps') {
     renderApps();
     if (!appsHaveIcons) request('/api/apps').then(result=>{
@@ -128,6 +134,11 @@ function renderState(newState) {
   el("undoChat").hidden = !state.undo_available;
   document.querySelectorAll('.storageStatus').forEach(node => node.textContent = state.storage);
   renderNotes();
+  if (typeof renderProjectsPage === 'function' && el('view-projects')?.classList.contains('active-page')) renderProjectsPage();
+  if (typeof renderKbPage === 'function' && el('view-kb')?.classList.contains('active-page')) renderKbPage();
+  if (typeof renderStudioPage === 'function' && el('view-studio')?.classList.contains('active-page')) renderStudioPage();
+  if (typeof renderActionsPage === 'function' && el('view-actions')?.classList.contains('active-page')) renderActionsPage();
+  if (typeof renderTasksPage === 'function' && el('view-tasks')?.classList.contains('active-page')) renderTasksPage();
   if (!el('view-settings').classList.contains('active-page')) fillPreferences();
   if (!activeStream || el("chatLog").dataset.chat !== state.active_chat_id) renderChat();
   renderHistory();
@@ -166,6 +177,32 @@ function renderChat() {
     if (entry.role === 'assistant') markdown(bubble, entry.content);
     else bubble.textContent = entry.content;
     msg.appendChild(bubble);
+    const sourcesForMsg = state.chat_sources?.[String(index)];
+    if (entry.role === 'assistant' && Array.isArray(sourcesForMsg) && sourcesForMsg.length) {
+      const srcBox = document.createElement('div');
+      srcBox.className = 'citations-bar';
+      const head = document.createElement('small');
+      head.textContent = 'Kaynaklar: ';
+      srcBox.appendChild(head);
+      sourcesForMsg.forEach(src => {
+        if (src.kind === 'web' && src.uri) {
+          const a = document.createElement('a');
+          a.href = src.uri;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          a.className = 'citation-chip web';
+          a.textContent = src.title || src.uri;
+          srcBox.appendChild(a);
+        } else {
+          const chip = document.createElement('span');
+          chip.className = 'citation-chip doc';
+          const loc = src.page ? `Sayfa ${src.page}` : (src.section || '');
+          chip.textContent = `${src.title}${loc ? ' · ' + loc : ''}`;
+          srcBox.appendChild(chip);
+        }
+      });
+      msg.appendChild(srcBox);
+    }
     const tools = document.createElement('div');
     tools.className = 'reply-actions';
     const starred = state.stars.includes(index);
@@ -176,6 +213,11 @@ function renderChat() {
       if (confirm('Bu mesaj ve eşleşen yanıt silinsin mi?')) await extra({kind:'delete_message',id:chatId,index,revision:state.revision});
     }));
     tools.append(action('Hafızaya öner',()=>saveMemoryCandidate(entry.content)));
+    tools.append(action('Görev öner',()=>proposeTaskFromMessage(entry.content)));
+    if (entry.role === 'assistant') {
+      tools.append(action('Studio’da üret',()=>openInStudio(entry.content)));
+      tools.append(action('Seslendir',()=>speakText(entry.content)));
+    }
     tools.append(action('Kopyala', () => navigator.clipboard.writeText(entry.content)));
     if (entry.role === 'user') tools.append(action('Düzenle', async () => {
       if (busy) return;
@@ -520,6 +562,8 @@ function wireEvents() {
   document.querySelectorAll('[data-style]').forEach(btn => btn.addEventListener('click', () => changeLength(btn.dataset.style)));
   document.querySelectorAll('[data-action]').forEach(btn => btn.addEventListener('click', () => {
     if (btn.dataset.action === 'apps') return showPage('apps');
+    if (btn.dataset.action === 'kb') return showPage('kb');
+    if (btn.dataset.action === 'studio') return showPage('studio');
     showPage('chat');
     el('messageInput').value = btn.dataset.action === 'math' ? '/hesap ' : 'Python ile şu konuda kod yaz: ';
     el('messageInput').focus();
