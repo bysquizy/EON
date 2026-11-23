@@ -1,4 +1,4 @@
-"""EON v0.5.0 — local desktop-style interface, or optional terminal mode."""
+"""EON v0.6.0 — local desktop-style interface, or optional terminal mode."""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,7 @@ import webbrowser
 
 
 def run_cli(service: EonService) -> int:
-    print("EON v0.5.0 — Yerel CLI · /yardim ile komutları gör")
+    print("EON v0.6.0 — Yerel CLI · /yardim ile komutları gör")
     while True:
         try:
             text = input("Sen > ").strip()
@@ -26,13 +26,94 @@ def run_cli(service: EonService) -> int:
             print("EON > Ollama'ya bağlanılamadı; yerel modeli kontrol et.")
 
 
+def open_app_window(url: str, *, prefer_app_window: bool = True) -> bool:
+    if prefer_app_window and sys.platform == "win32":
+        import os
+        import subprocess
+        candidates = []
+        for env_key in ("ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"):
+            base = os.environ.get(env_key)
+            if base:
+                candidates.append(os.path.join(base, "Microsoft", "Edge", "Application", "msedge.exe"))
+                candidates.append(os.path.join(base, "Google", "Chrome", "Application", "chrome.exe"))
+        for exe in candidates:
+            if os.path.isfile(exe):
+                try:
+                    subprocess.Popen([exe, f"--app={url}"], shell=False, close_fds=True)
+                    return True
+                except OSError:
+                    pass
+    return bool(webbrowser.open(url))
+
+
+def start_tray_controller(url: str, service: EonService, server) -> object | None:
+    if sys.platform != "win32":
+        return None
+    import os
+    import subprocess
+    exe = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    if not os.path.isfile(exe):
+        return None
+    script = (
+        "Add-Type -AssemblyName System.Windows.Forms,System.Drawing;"
+        "$n=New-Object System.Windows.Forms.NotifyIcon;"
+        "$n.Icon=[System.Drawing.SystemIcons]::Application;"
+        "$n.Text='EON v0.6.0 — Kisisel AI Calisma Ortami';"
+        "$n.Visible=$true;"
+        "$m=New-Object System.Windows.Forms.ContextMenuStrip;"
+        "$open=$m.Items.Add('EON Calisma Ortamini Ac');"
+        "$open.Add_Click({[Console]::Out.WriteLine('OPEN');[Console]::Out.Flush()});"
+        "$unload=$m.Items.Add('Ollama Modelini Bellekten Bosalt');"
+        "$unload.Add_Click({[Console]::Out.WriteLine('UNLOAD');[Console]::Out.Flush()});"
+        "$m.Items.Add('-')|Out-Null;"
+        "$exit=$m.Items.Add('EON Sunucusunu Kapat');"
+        "$exit.Add_Click({$n.Visible=$false;[Console]::Out.WriteLine('EXIT');[Console]::Out.Flush();[System.Windows.Forms.Application]::Exit()});"
+        "$n.ContextMenuStrip=$m;"
+        "$n.Add_DoubleClick({[Console]::Out.WriteLine('OPEN');[Console]::Out.Flush()});"
+        "[System.Windows.Forms.Application]::Run()"
+    )
+    try:
+        import threading
+        proc = subprocess.Popen(
+            [exe, "-NoProfile", "-WindowStyle", "Hidden", "-Command", script],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        def _listen():
+            if not proc.stdout:
+                return
+            for line in proc.stdout:
+                cmd = line.strip()
+                if cmd == "OPEN":
+                    open_app_window(url, prefer_app_window=True)
+                elif cmd == "UNLOAD":
+                    try:
+                        service.runtime_action("unload")
+                    except Exception:
+                        pass
+                elif cmd == "EXIT":
+                    try:
+                        server.shutdown()
+                    except Exception:
+                        pass
+                    break
+        threading.Thread(target=_listen, daemon=True).start()
+        return proc
+    except OSError:
+        return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="EON — Ollama ve isteğe bağlı Gemini asistanı")
     parser.add_argument("--cli", action="store_true", help="Tarayıcı arayüzü yerine terminal")
     parser.add_argument("--no-browser", action="store_true", help="Tarayıcıyı açma")
+    parser.add_argument("--tab", action="store_true", help="Uygulama penceresi yerine normal tarayıcı sekmesinde aç")
+    parser.add_argument("--tray", action="store_true", help="Windows sistem tepsisi (System Tray) ikonuyla çalıştır")
     parser.add_argument("--silent", action="store_true", help="Konsol kullanmadan aç; başlangıç hataları bildirilir")
     parser.add_argument("--model", default="qwen3:4b-instruct", help="Kurulu yerel model adı")
     args = parser.parse_args()
+    if args.tray:
+        args.silent = True
     if args.silent and args.cli:
         message = "Sessiz başlatma yalnızca tarayıcı arayüzüyle kullanılabilir."
         if sys.platform == "win32":
@@ -64,6 +145,7 @@ def main() -> int:
             print(message)
         return 1
     server = None
+    tray_proc = None
     try:
         from eon.launcher import storage_path
         service = EonService(model=args.model, vault_path=storage_path().with_name("library.dpapi"))
@@ -72,11 +154,13 @@ def main() -> int:
         from eon.server import start_server
         server = start_server(service=service)
         url = server.origin + "#access=" + server.access
+        if args.tray:
+            tray_proc = start_tray_controller(url, service, server)
         if not args.silent:
-            print("EON v0.5.0 hazır. Yerel adres:", server.origin)
+            print("EON v0.6.0 hazır. Yerel adres:", server.origin)
             print("Oturum anahtarı bağlantı parçasında saklanır ve konsola yazdırılmaz.")
             print("Kapatmak için Ctrl+C. Ollama yalnız yerel model seçilince kullanılır.")
-        if not args.no_browser and not webbrowser.open(url) and args.silent:
+        if not args.no_browser and not open_app_window(url, prefer_app_window=not args.tab) and args.silent:
             raise RuntimeError("Varsayılan tarayıcı açılamadı.")
         try:
             server.serve_forever(poll_interval=0.2)
@@ -92,6 +176,11 @@ def main() -> int:
             print(message)
         return 1
     finally:
+        if tray_proc is not None:
+            try:
+                tray_proc.terminate()
+            except Exception:
+                pass
         if server is not None:
             server.server_close()
         release_instance()

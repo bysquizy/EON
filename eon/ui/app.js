@@ -194,14 +194,53 @@ function renderChat() {
           a.textContent = src.title || src.uri;
           srcBox.appendChild(a);
         } else {
-          const chip = document.createElement('span');
+          const chip = document.createElement('button');
+          chip.type = 'button';
           chip.className = 'citation-chip doc';
           const loc = src.page ? `Sayfa ${src.page}` : (src.section || '');
           chip.textContent = `${src.title}${loc ? ' · ' + loc : ''}`;
+          chip.title = 'Belge kaynağını ve tam metin bölümünü görüntüle';
+          chip.onclick = () => {
+            if (typeof inspectKnowledgeCitation === 'function' && src.doc_id) inspectKnowledgeCitation(src.doc_id, src.chunk_index || 0);
+            else showPage('kb');
+          };
           srcBox.appendChild(chip);
         }
       });
       msg.appendChild(srcBox);
+    }
+    const actionCard = state.chat_action_cards?.[String(index)];
+    if (entry.role === 'assistant' && actionCard && actionCard.token) {
+      const card = document.createElement('div');
+      card.className = 'pending-confirm-box inline-action-card';
+      const title = document.createElement('strong');
+      title.textContent = `Önerilen Eylem Planı: ${actionCard.title} (${actionCard.risk.toUpperCase()})`;
+      const desc = document.createElement('p');
+      desc.textContent = actionCard.change_summary;
+      card.append(title, desc);
+      const steps = Array.isArray(actionCard.steps) && actionCard.steps.length ? actionCard.steps : [actionCard];
+      const approve = action(steps.length > 1 ? `Tüm Planı Onayla ve Uygula (${steps.length} Adım)` : 'Onayla ve Uygula', async () => {
+        let lastState = state;
+        for (const st of steps) {
+          const res = await request('/api/actions', {action:'confirm', token:st.token, approve:true});
+          lastState = res.state;
+        }
+        delete lastState.chat_action_cards[String(index)];
+        renderState(lastState);
+        toast('Ajan eylem planı onaylandı ve sırayla uygulandı.');
+      });
+      const cancel = action('İptal', async () => {
+        let lastState = state;
+        for (const st of steps) {
+          const res = await request('/api/actions', {action:'confirm', token:st.token, approve:false});
+          lastState = res.state;
+        }
+        delete lastState.chat_action_cards[String(index)];
+        renderState(lastState);
+        toast('Eylem planı iptal edildi.');
+      });
+      card.append(approve, cancel);
+      msg.appendChild(card);
     }
     const tools = document.createElement('div');
     tools.className = 'reply-actions';

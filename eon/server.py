@@ -20,6 +20,7 @@ ASSETS = {
     "/chat.js": ("chat.js", "application/javascript; charset=utf-8"),
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
     "/studio.js": ("studio.js", "application/javascript; charset=utf-8"),
+    "/modules.js": ("modules.js", "application/javascript; charset=utf-8"),
     "/hybrid.js": ("hybrid.js", "application/javascript; charset=utf-8"),
     "/theme.css": ("theme.css", "text/css; charset=utf-8"),
     "/extras.js": ("extras.js", "application/javascript; charset=utf-8"),
@@ -95,7 +96,7 @@ class EonHandler(BaseHTTPRequestHandler):
                                     "models": self.server.service.models(),
                                     "apps": self.server.service.apps()})
         if path == "/api/health":
-            return self._json(200, {"status": "ok", "version": "0.5.0"})
+            return self._json(200, {"status": "ok", "version": "0.6.0"})
         if path == "/api/state":
             return self._json(200, self.server.service.snapshot())
         if path == "/api/models":

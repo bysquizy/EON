@@ -1,5 +1,12 @@
 # Değişiklikler
 
+## v0.6.0
+
+- **Çok Adımlı Ajan Planlama & Prompt Injection Kalkanı:** Sohbet içi çok adımlı klasör/dosya eylem planı kartı, belge içi dolaylı prompt injection filtrelemesi ve denetim kaydı.
+- **Tam Çevrimdışı Mod (Offline Kill-Switch) & Network Inspector:** Tüm dış ağ bağlantılarını backend seviyesinde kapatan Kill-Switch, dış ağ denetim günlüğü ve döngüsel DPAPI kasa yedekleri (`.bak1..3.dpapi`, `.pre-v060.dpapi`).
+- **Bilgi Tabanı 3.0 & Windows Yerleşik OCR:** PPTX sunumları, HTML/JSON ve kaynak kod dosyaları (`.py`, `.js`, `.ts`, `.sql`, `.yaml`) desteği; Windows `Windows.Media.Ocr` ile çevrimdışı görselden metin çıkarma ve `Ctrl+V` pano görseli yapıştırma.
+- **Voice 2.0 & Masaüstü Entegrasyonu:** Cümle bazlı akışlı Neural HD seslendirme, barge-in kesme, kalıcı ses profili, `baslat.bat --tray` sistem tepsisi modu ve tek tıkla Masaüstü kısayolu oluşturma.
+
 ## v0.5.0
 
 - **EON Projects 2.0 ve Yerel Bilgi Tabanı:** Proje başına çalışma notları, model/profil tercihleri, hafıza kapsamı ve TXT, MD, PDF, DOCX, CSV, XLSX belge içe aktarma. SQLite FTS5 (BM25) ve isteğe bağlı Ollama `/api/embed` vektör araması ile yanıtlarda dosya ve sayfa/bölüm kaynağı gösterimi.

@@ -336,7 +336,7 @@ class Release050Tests(unittest.TestCase):
     def test_command_center_health_and_privacy_redacted_metrics(self):
         self.s.send("Gizli kullanıcı sorusu SECRET_PROMPT_999")
         status = self.s.runtime_action("status")
-        self.assertEqual(status["version"], "0.5.0")
+        self.assertEqual(status["version"], "0.6.0")
         self.assertIn("system_memory", status)
         # Request log must NEVER contain prompt or assistant text
         log_dump = json.dumps(status["request_log"])
@@ -396,9 +396,59 @@ class Release050Tests(unittest.TestCase):
                 backup_file = path.with_suffix(".pre-v050.dpapi")
                 self.assertTrue(backup_file.exists())
                 self.assertEqual(backup_file.read_bytes(), raw_before)
+                # Import knowledge doc and verify separate knowledge.dpapi is written
+                svc.knowledge_action({
+                    "action": "import",
+                    "name": "ayri_kasa.md",
+                    "data": base64.b64encode(b"# Ayri Kasa\nKASA_AYRISTIRMA_TESTI_77").decode("ascii"),
+                    "project": "",
+                })
+                kb_file = path.with_name("knowledge.dpapi")
+                self.assertTrue(kb_file.exists())
+                self.assertNotIn(b"KASA_AYRISTIRMA_TESTI_77", kb_file.read_bytes())
             finally:
                 if svc.vault:
                     svc.vault.close()
+
+            reopened = EonService(provider_factory=FakeProvider, launcher=Mock(), vault_path=path)
+            try:
+                hits = reopened.knowledge_action({"action": "search", "query": "KASA_AYRISTIRMA_TESTI_77", "project": ""})["results"]
+                self.assertEqual(len(hits), 1)
+                chunk = reopened.knowledge_action({"action": "get_chunk", "doc_id": hits[0]["doc_id"], "chunk_index": 0})["chunk"]
+                self.assertIn("KASA_AYRISTIRMA_TESTI_77", chunk["text"])
+            finally:
+                if reopened.vault:
+                    reopened.vault.close()
+
+    def test_turkish_pdf_encoding_batch_folder_import_and_inline_action_card(self):
+        # 1. Verify Turkish characters (ğ, Ğ, ş, Ş, ı, İ, ö, Ö, ç, Ç, ü, Ü) survive PDF build + extraction
+        tr_text = "Türkçe karakter testi: ğĞşŞıİöÖçÇüÜ ve Tablo:\n| Kalem | Değer |\n| --- | --- |\n| Ölçüm | 145 |"
+        pdf_raw = build_pdf_bytes("Türkçe Başlık ŞĞİ", tr_text)
+        extracted = extract_document_sections("turkce.pdf", pdf_raw)
+        self.assertIn("ğĞşŞıİöÖçÇüÜ", extracted[0]["text"])
+        self.assertIn(b"/Differences", pdf_raw)
+
+        # 2. Verify batch folder import & inline chat action proposal card
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "belge1.md").write_text("# Belge 1\nTOPLU_AKTARIM_VERISI_1", encoding="utf-8")
+            (root / "belge2.txt").write_text("TOPLU_AKTARIM_VERISI_2", encoding="utf-8")
+            self.s.action_center({"action": "add_folder", "path": str(root)})
+
+            batch = self.s.knowledge_action({"action": "import_folder", "folder": str(root), "project": ""})
+            self.assertEqual(batch["imported"], 2)
+
+            # Inline action card proposal when user asks to save output to a file
+            res = self.s.generate(text="Bu özeti rapor_ozeti.md dosyasına kaydet")
+            cid = res["state"]["active_chat_id"]
+            cards = res["state"]["chat_action_cards"]
+            self.assertTrue(len(cards) >= 1)
+            card = next(iter(cards.values()))
+            self.assertEqual(card["skill"], "write_text_file")
+            self.assertFalse((root / "rapor_ozeti.md").exists())
+            # Confirm card token -> file is written
+            self.s.action_center({"action": "confirm", "token": card["token"], "approve": True})
+            self.assertTrue((root / "rapor_ozeti.md").exists())
 
 
 if __name__ == "__main__":

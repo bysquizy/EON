@@ -2,6 +2,7 @@
 chcp 65001 >nul
 cd /d "%~dp0"
 if /I "%~1"=="--silent" goto silent
+if /I "%~1"=="--tray" goto tray
 where.exe py >nul 2>&1
 if errorlevel 1 goto use_python
 py -3 eon.py
@@ -23,6 +24,19 @@ pyw -3 eon.py --silent
 goto finish
 :launch_pythonw
 pythonw eon.py --silent
+goto finish
+:tray
+where.exe pyw >nul 2>&1
+if not errorlevel 1 (
+  pyw -3 eon.py --tray
+  goto finish
+)
+where.exe pythonw >nul 2>&1
+if not errorlevel 1 (
+  pythonw eon.py --tray
+  goto finish
+)
+py -3 eon.py --tray
 goto finish
 :normal
 where.exe py >nul 2>&1

@@ -11,6 +11,7 @@
   <script defer src="/workspace.js"></script>
   <script defer src="/hybrid.js"></script>
   <script defer src="/studio.js"></script>
+  <script defer src="/modules.js"></script>
   <script defer src="/app.js"></script>
   <script defer src="/extras.js"></script>
 </head>
@@ -37,13 +38,14 @@
       <symbol id="i-x" viewBox="0 0 24 24"><path d="M5 5l14 14M19 5 5 19"/></symbol>
       <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m21 15-5-5L5 20"/></symbol>
       <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8"/></symbol>
+      <symbol id="i-volume" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></symbol>
       <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
       <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.5 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.8-5.4 2.8 1-6.1-4.4-4.3 6.1-.9z"/></symbol>
     </defs>
   </svg>
   <div class="window">
     <header class="topbar">
-      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.5.0</span></div>
+      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.6.0</span></div>
       <button id="commandOpen" class="outline-button" aria-haspopup="dialog" title="Komut Merkezi (Ctrl+K)">Komutlar <kbd>Ctrl K</kbd></button>
       <div class="ambient"><time id="clock"></time><span id="forecast">Hava durumu kapalı</span></div>
       <div class="top-status" id="connection"><span class="status-dot"></span><span id="connectionText">Bağlanıyor...</span></div>
@@ -98,8 +100,9 @@
             <div id="visionPreviewBar" class="attachment-bar hidden" aria-label="Eklenen görseller"></div>
             <div class="composer">
               <input type="file" id="visionInput" class="hidden" accept="image/png,image/jpeg,image/webp" multiple>
-              <button type="button" id="attachImageBtn" class="icon-button" title="Görsel ekle (PNG, JPEG, WebP)" aria-label="Görsel ekle"><svg><use href="#i-image"/></svg></button>
+              <button type="button" id="attachImageBtn" class="icon-button" title="Görsel ekle (PNG, JPEG, WebP) veya sürükle-bırak" aria-label="Görsel ekle"><svg><use href="#i-image"/></svg></button>
               <button type="button" id="pttButton" class="icon-button" title="Bas-Konuş (Yerel Ses Girişi)" aria-label="Bas-Konuş"><svg><use href="#i-mic"/></svg></button>
+              <button type="button" id="liveVoiceToggle" class="icon-button" title="Canlı Sesli Yanıt Modu (Cümle bazlı gerçek zamanlı Neural HD seslendirme)" aria-pressed="false" aria-label="Canlı Sesli Yanıt Modu"><svg><use href="#i-volume"/></svg></button>
               <label class="sr-only" for="messageInput">Mesaj</label>
               <textarea rows="1" maxlength="2500" id="messageInput" placeholder="EON'a bir şey sor..."></textarea>
               <button type="button" id="researchToggle" class="pill-toggle" title="Kaynaklı Araştırma Modu (Gemini Grounding)" aria-pressed="false"><svg><use href="#i-globe"/></svg><span>Araştırma</span></button>
@@ -162,12 +165,13 @@
               <h3>Belge İçe Aktar</h3>
               <p>Dosyalar yerel olarak okunur ve kaynak dosya değiştirilmez. Sınır: 8 MiB / 100 PDF sayfası.</p>
               <label>Hedef Proje Kapsamı <select id="kbProjectSelect" class="field"></select></label>
-              <label>Dosya Seç (.txt, .md, .pdf, .docx, .csv, .xlsx)
-                <input type="file" id="kbFileInput" class="field" accept=".txt,.md,.pdf,.docx,.csv,.xlsx">
+              <label>Dosya Seç (.txt, .md, .pdf, .docx, .xlsx, .pptx, .csv, .json, .html, .py, .js, .sql)
+                <input type="file" id="kbFileInput" class="field" accept=".txt,.md,.pdf,.docx,.csv,.xlsx,.pptx,.json,.html,.htm,.py,.js,.ts,.sql,.yaml,.yml,.xml,.css">
               </label>
               <label><input type="checkbox" id="kbUseEmbeddings"> Ollama embedding varsa vektör indeksini de üret</label>
               <div class="button-row">
                 <button class="primary-button" id="kbImportBtn" type="button">İçe Aktar ve İndeksle</button>
+                <button class="outline-button" id="kbBatchFolderBtn" type="button">İzinli Klasörden Toplu Aktar</button>
                 <button class="outline-button hidden" id="kbCancelBtn" type="button">İptal</button>
               </div>
               <div id="kbProgressStatus" class="subtle-box" role="status">Hazır.</div>
@@ -192,7 +196,15 @@
           </div>
           <div class="settings-grid">
             <div class="settings-card">
-              <h3>Belge Taslağı</h3>
+              <h3>Belge Taslağı &amp; Hazır Şablonlar</h3>
+              <label>Hazır Şablon Seç
+                <select id="studioTemplateSelect" class="field">
+                  <option value="">— Şablon Seç (İsteğe Bağlı) —</option>
+                  <option value="meeting">Toplantı &amp; Karar Özeti</option>
+                  <option value="research">Kaynaklı Araştırma Raporu</option>
+                  <option value="budget">Bütçe &amp; Metrik Tablosu</option>
+                </select>
+              </label>
               <label>Belge Başlığı <input id="studioTitle" class="field" maxlength="120" placeholder="Örn. Haftalık Araştırma Raporu"></label>
               <label>Çıktı Türü
                 <select id="studioFormat" class="field">
@@ -337,8 +349,12 @@
 
         <section class="page content-page" id="view-health" aria-label="Sistem Sağlığı">
           <div class="page-heading">
-            <div><p class="eyebrow">KOMUTA MERKEZİ</p><h2>EON Command Center</h2><p>Sağlayıcı bağlantıları, sistem RAM ve Ollama model belleği, kasa durumu ve gizlilik etkili metrik geçmişi.</p></div>
-            <button class="outline-button" id="ccRefreshBtn" type="button"><svg><use href="#i-refresh"/></svg> Durumu Yenile</button>
+            <div><p class="eyebrow">KOMUTA MERKEZİ</p><h2>EON Command Center</h2><p>Sağlayıcı bağlantıları, Tam Çevrimdışı Mod (Kill-Switch), ağ denetim günlüğü ve sistem belleği.</p></div>
+            <div class="button-row">
+              <button class="outline-button" id="ccOfflineKillSwitchBtn" type="button" aria-pressed="false">Tam Çevrimdışı Mod: Kapalı</button>
+              <button class="outline-button" id="ccDesktopShortcutBtn" type="button">Masaüstü Kısayolu Oluştur</button>
+              <button class="outline-button" id="ccRefreshBtn" type="button"><svg><use href="#i-refresh"/></svg> Durumu Yenile</button>
+            </div>
           </div>
           <div class="settings-grid">
             <div class="settings-card">
@@ -359,6 +375,8 @@
           </div>
           <h3 class="section-subhead">İstek Metrik Geçmişi (Hassas İçerik Saklanmaz)</h3>
           <div id="ccRequestLog" class="history-list"></div>
+          <h3 class="section-subhead">Dış Ağ Denetim Günlüğü (Network Inspector)</h3>
+          <div id="ccNetworkLog" class="history-list"></div>
         </section>
 
         <section class="page content-page" id="view-settings" aria-label="Ayarlar">

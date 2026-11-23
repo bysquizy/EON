@@ -16,12 +16,32 @@ import zipfile
 import zlib
 
 
-SUPPORTED_EXTENSIONS = {".txt", ".md", ".csv", ".docx", ".xlsx", ".pdf"}
+SUPPORTED_EXTENSIONS = {
+    ".txt", ".md", ".csv", ".docx", ".xlsx", ".pptx", ".pdf",
+    ".json", ".html", ".htm", ".py", ".js", ".ts", ".sql", ".yaml", ".yml", ".xml", ".css",
+}
+CODE_TEXT_EXTENSIONS = {".json", ".html", ".htm", ".py", ".js", ".ts", ".sql", ".yaml", ".yml", ".xml", ".css"}
 MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_PDF_PAGES = 100
 MAX_DOC_CHARS = 120000
 MAX_CHUNKS_PER_DOC = 160
 MAX_DOCS_PER_PROJECT = 32
+
+INJECTION_PATTERNS = re.compile(
+    r"(?:ignore\s+(?:all\s+)?(?:previous|prior)\s+instructions|"
+    r"system\s*prompt\s*:|you\s+are\s+now\s+dan|"
+    r"önceki\s+tüm\s+talimatları\s+unut|sistem\s+yönergesini\s+yoksay)",
+    re.IGNORECASE,
+)
+
+
+def sanitize_untrusted_doc_text(text: str) -> tuple[str, bool]:
+    """Neutralize indirect prompt-injection commands inside documents while preserving informational content."""
+    if not isinstance(text, str):
+        return "", False
+    flagged = bool(INJECTION_PATTERNS.search(text))
+    cleaned = INJECTION_PATTERNS.sub("[FİLTRELENMİŞ-TALİMAT]", text)
+    return cleaned, flagged
 
 
 class KnowledgeError(ValueError):
@@ -164,6 +184,75 @@ def extract_xlsx_sections(raw: bytes) -> list[dict]:
     return sections
 
 
+def extract_pptx_sections(raw: bytes) -> list[dict]:
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            _check_safe_zip(zf)
+            names = sorted(
+                (n for n in zf.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", n)),
+                key=lambda s: int(re.findall(r"\d+", s)[-1]),
+            )
+            if not names:
+                raise KnowledgeError("Geçerli bir PPTX sunumu değil veya slayt bulunamadı.")
+            sections = []
+            for idx, sfile in enumerate(names[:100], 1):
+                root = _parse_xml_safe(zf.read(sfile))
+                texts = [el.text.strip() for el in root.iter() if el.tag.endswith("}t") and el.text and el.text.strip()]
+                if texts:
+                    sections.append({"section": f"Slayt {idx}", "page": idx, "text": "\n".join(texts)})
+    except zipfile.BadZipFile:
+        raise KnowledgeError("PPTX dosyası bozuk veya okunamıyor.") from None
+    if not sections:
+        raise KnowledgeError("PPTX içinde okunabilir metin bulunamadı.")
+    return sections
+
+
+def windows_native_ocr(image_bytes: bytes, ext: str = ".png") -> str:
+    """Offline OCR via Windows built-in WinRT Windows.Media.Ocr (zero third-party dependencies)."""
+    import os
+    import subprocess
+    import sys
+    import tempfile
+    if sys.platform != "win32":
+        return ""
+    exe = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+    if not os.path.isfile(exe):
+        return ""
+    fd, tmp_path = tempfile.mkstemp(prefix="eon-ocr-", suffix=ext if ext in (".png", ".jpg", ".jpeg", ".webp") else ".png")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(image_bytes)
+        script = (
+            "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);"
+            "$p=$args[0];"
+            "Add-Type -AssemblyName System.Runtime.WindowsRuntime;"
+            "$null=[Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime];"
+            "$null=[Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime];"
+            "$null=[Windows.Graphics.Imaging.BitmapDecoder,Windows.Foundation,ContentType=WindowsRuntime];"
+            "$asTask=([System.WindowsRuntimeSystemExtensions].GetMethods()|?{$_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'})[0];"
+            "Function Await($op,$t){$m=$asTask.MakeGenericMethod($t);$tk=$m.Invoke($null,@($op));$tk.Wait();$tk.Result};"
+            "$f=Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($p)) ([Windows.Storage.StorageFile]);"
+            "$s=Await ($f.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream]);"
+            "$d=Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($s)) ([Windows.Graphics.Imaging.BitmapDecoder]);"
+            "$b=Await ($d.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap]);"
+            "$e=[Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages();"
+            "if($e){$r=Await ($e.RecognizeAsync($b)) ([Windows.Media.Ocr.OcrResult]);Write-Output $r.Text}"
+        )
+        res = subprocess.run(
+            [exe, "-NoProfile", "-NonInteractive", "-Command", script, tmp_path],
+            capture_output=True, text=True, encoding="utf-8", timeout=12,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return _clean_text(res.stdout or "")
+    except Exception:
+        return ""
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
 def _decode_pdf_literal(s: bytes) -> str:
     out = bytearray()
     i = 0
@@ -199,7 +288,7 @@ def _decode_pdf_literal(s: bytes) -> str:
     try:
         return out.decode("utf-8")
     except UnicodeDecodeError:
-        return out.decode("latin-1", errors="ignore")
+        return out.decode("cp1254", errors="ignore")
 
 
 def _extract_text_from_pdf_stream(data: bytes) -> str:
@@ -303,7 +392,7 @@ def extract_document_sections(name: str, raw: bytes, cancel_event: threading.Eve
     if cancel_event and cancel_event.is_set():
         raise KnowledgeError("İçe aktarma iptal edildi.")
 
-    if ext in (".txt", ".md"):
+    if ext in (".txt", ".md") or ext in CODE_TEXT_EXTENSIONS:
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
@@ -311,6 +400,10 @@ def extract_document_sections(name: str, raw: bytes, cancel_event: threading.Eve
                 text = raw.decode("utf-16")
             except UnicodeDecodeError:
                 text = raw.decode("cp1254", errors="replace")
+        if ext in (".html", ".htm"):
+            text = re.sub(r"<script[\s\S]*?</script>", " ", text, flags=re.IGNORECASE)
+            text = re.sub(r"<style[\s\S]*?</style>", " ", text, flags=re.IGNORECASE)
+            text = re.sub(r"<[^>]+>", " ", text)
         text = _clean_text(text)
         if not text:
             raise KnowledgeError("Metin dosyası boş.")
@@ -330,7 +423,7 @@ def extract_document_sections(name: str, raw: bytes, cancel_event: threading.Eve
             if buf and "\n".join(buf).strip():
                 sections.append({"section": heading, "page": None, "text": "\n".join(buf).strip()})
             return sections or [{"section": "Metin", "page": None, "text": text}]
-        return [{"section": "Metin", "page": None, "text": text}]
+        return [{"section": f"Kaynak ({ext})", "page": 1, "text": text}]
 
     if ext == ".csv":
         try:
@@ -355,6 +448,8 @@ def extract_document_sections(name: str, raw: bytes, cancel_event: threading.Eve
         return extract_docx_sections(raw)
     if ext == ".xlsx":
         return extract_xlsx_sections(raw)
+    if ext == ".pptx":
+        return extract_pptx_sections(raw)
     if ext == ".pdf":
         return extract_pdf_sections(raw, cancel_event=cancel_event)
     raise KnowledgeError("Desteklenmeyen dosya türü.")
@@ -578,6 +673,25 @@ class KnowledgeBase:
             if to_delete:
                 self.db.commit()
 
+    def get_chunk(self, doc_id: str, chunk_index: int = 0) -> dict:
+        with self._lock:
+            doc = self.documents.get(doc_id)
+            if not doc:
+                raise KnowledgeError("Belge bulunamadı.")
+            chunks = doc.get("chunks", [])
+            idx = max(0, min(int(chunk_index), len(chunks) - 1)) if chunks else 0
+            ch = chunks[idx] if chunks else {"index": 0, "section": "Bölüm", "page": None, "text": ""}
+            return {
+                "doc_id": doc["id"],
+                "name": doc["name"],
+                "project": doc["project"],
+                "chunk_count": len(chunks),
+                "chunk_index": ch["index"],
+                "section": ch["section"],
+                "page": ch["page"],
+                "text": ch["text"],
+            }
+
     def search(self, query: str, *, project: str = "", limit: int = 5, query_embedding: list[float] | None = None) -> list[dict]:
         if not isinstance(query, str):
             return []
@@ -586,6 +700,7 @@ class KnowledgeBase:
             proj_docs = [d for d in self.documents.values() if d["project"] == project]
             if not proj_docs:
                 return []
+            bm25_ranks: dict[tuple[str, int], int] = {}
             scored: dict[tuple[str, int], dict] = {}
             if tokens:
                 fts_expr = " OR ".join(f'"{t}"*' for t in tokens)
@@ -593,10 +708,11 @@ class KnowledgeBase:
                     cur = self.db.execute(
                         "SELECT doc_id, doc_name, section, page, chunk_index, content, bm25(chunks_fts) AS rank "
                         "FROM chunks_fts WHERE chunks_fts MATCH ? AND project = ? ORDER BY rank LIMIT ?",
-                        (fts_expr, project, limit * 3),
+                        (fts_expr, project, limit * 4),
                     )
-                    for doc_id, doc_name, section, page, chunk_index, content, rank in cur.fetchall():
+                    for r_idx, (doc_id, doc_name, section, page, chunk_index, content, rank) in enumerate(cur.fetchall(), 1):
                         key = (doc_id, int(chunk_index))
+                        bm25_ranks[key] = r_idx
                         scored[key] = {
                             "doc_id": doc_id,
                             "name": doc_name,
@@ -608,14 +724,17 @@ class KnowledgeBase:
                         }
                 except sqlite3.OperationalError:
                     pass
-            # Fallback substring & vector scoring across project chunks
+            # Hybrid RRF (Reciprocal Rank Fusion, k=60) + keyword overlap + vector cosine similarity
+            vec_candidates = []
             for doc in proj_docs:
                 for ch in doc["chunks"]:
                     key = (doc["id"], ch["index"])
                     low_text = ch["text"].casefold()
                     kw_hits = sum(1 for t in tokens if t in low_text)
                     vec_sim = _cosine(query_embedding, ch.get("embedding", [])) if query_embedding and ch.get("embedding") else 0.0
-                    if kw_hits > 0 or vec_sim > 0.25:
+                    if vec_sim > 0.15:
+                        vec_candidates.append((key, vec_sim))
+                    if kw_hits > 0 or vec_sim > 0.20 or key in bm25_ranks:
                         entry = scored.get(key) or {
                             "doc_id": doc["id"],
                             "name": doc["name"],
@@ -625,7 +744,13 @@ class KnowledgeBase:
                             "snippet": ch["text"],
                             "score": 0.0,
                         }
-                        entry["score"] += kw_hits * 1.2 + vec_sim * 4.0
+                        rrf_bm25 = (1.0 / (60 + bm25_ranks[key])) if key in bm25_ranks else 0.0
+                        entry["score"] += rrf_bm25 * 50.0 + kw_hits * 1.4 + vec_sim * 4.5
                         scored[key] = entry
+            if vec_candidates:
+                vec_candidates.sort(key=lambda x: -x[1])
+                for v_rank, (key, _) in enumerate(vec_candidates, 1):
+                    if key in scored:
+                        scored[key]["score"] += (1.0 / (60 + v_rank)) * 50.0
             ranked = sorted(scored.values(), key=lambda x: (-x["score"], x["name"], x["chunk_index"]))
             return ranked[:limit]

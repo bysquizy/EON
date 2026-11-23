@@ -549,8 +549,12 @@ function togglePushToTalk() {
 }
 
 let activeAudioPlayer = null;
+let liveSentenceQueue = [];
+let liveSentenceBusy = false;
 
 function stopVoicePlayback() {
+  liveSentenceQueue = [];
+  liveSentenceBusy = false;
   if (activeAudioPlayer) {
     try { activeAudioPlayer.pause(); activeAudioPlayer.src = ''; } catch {}
     activeAudioPlayer = null;
@@ -558,6 +562,59 @@ function stopVoicePlayback() {
   if ('speechSynthesis' in window) {
     try { window.speechSynthesis.cancel(); } catch {}
   }
+}
+
+async function processLiveSentenceQueue() {
+  if (liveSentenceBusy || !liveSentenceQueue.length) return;
+  liveSentenceBusy = true;
+  const text = liveSentenceQueue.shift();
+  const voice = el('voicePersonaSelect')?.value || state?.voice_state?.selected || 'tr-TR-AhmetNeural';
+  try {
+    const res = await request('/api/voice', {action:'speak', text, voice});
+    if (res.audio_base64) {
+      const bytes = Uint8Array.from(atob(res.audio_base64), c => c.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], {type: res.mime || 'audio/mpeg'}));
+      await new Promise(resolve => {
+        const audio = new Audio(url);
+        activeAudioPlayer = audio;
+        audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+        audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+        audio.play().catch(() => resolve());
+      });
+    } else if (res.cleaned_text) {
+      browserNaturalSpeak(res.cleaned_text, voice);
+    }
+  } catch {}
+  liveSentenceBusy = false;
+  if (liveSentenceQueue.length) processLiveSentenceQueue();
+}
+
+function enqueueLiveSentence(sentence) {
+  if (!sentence || sentence.length < 3) return;
+  liveSentenceQueue.push(sentence);
+  processLiveSentenceQueue();
+}
+
+async function inspectKnowledgeCitation(docId, chunkIndex = 0) {
+  try {
+    const {chunk} = await request('/api/knowledge', {action:'get_chunk', doc_id:docId, chunk_index:chunkIndex});
+    const loc = chunk.page ? `Sayfa ${chunk.page}` : chunk.section;
+    const body = dialog(`${chunk.name} · ${loc}`);
+    const meta = document.createElement('p');
+    meta.className = 'note-small';
+    meta.textContent = `Bölüm ${chunk.chunk_index + 1} / ${chunk.chunk_count} · Kaynak belge içeriği (salt okunur)`;
+    const pre = document.createElement('pre');
+    pre.className = 'citation-modal-text';
+    pre.textContent = chunk.text;
+    const prevBtn = action('← Önceki Bölüm', () => inspectKnowledgeCitation(docId, Math.max(0, chunk.chunk_index - 1)));
+    prevBtn.disabled = chunk.chunk_index <= 0;
+    const nextBtn = action('Sonraki Bölüm →', () => inspectKnowledgeCitation(docId, Math.min(chunk.chunk_count - 1, chunk.chunk_index + 1)));
+    nextBtn.disabled = chunk.chunk_index >= chunk.chunk_count - 1;
+    const nav = document.createElement('div');
+    nav.className = 'button-row';
+    nav.append(prevBtn, nextBtn);
+    body.append(meta, pre, nav);
+  } catch (error) { toast(error.message); }
 }
 
 function browserNaturalSpeak(text, preferredVoice = 'tr-TR-AhmetNeural') {
@@ -654,6 +711,86 @@ function wireStudio() {
 
   el('pttButton').onclick = togglePushToTalk;
   el('voiceIndicator').onclick = togglePushToTalk;
+  if (el('liveVoiceToggle')) {
+    el('liveVoiceToggle').onclick = () => {
+      const cur = el('liveVoiceToggle').getAttribute('aria-pressed') === 'true';
+      const next = !cur;
+      el('liveVoiceToggle').setAttribute('aria-pressed', String(next));
+      el('liveVoiceToggle').classList.toggle('active', next);
+      if (!next) stopVoicePlayback();
+      toast(next ? 'Canlı Sesli Yanıt Modu açıldı: EON yanıt üretirken cümle cümle doğal sesle konuşacak.' : 'Canlı Sesli Yanıt Modu kapatıldı.');
+    };
+  }
+  if (el('studioTemplateSelect')) {
+    el('studioTemplateSelect').onchange = () => {
+      const tplKey = el('studioTemplateSelect').value;
+      const tpl = state?.studio_templates?.[tplKey];
+      if (tpl) {
+        el('studioTitle').value = tpl.title;
+        el('studioContent').value = tpl.content;
+        el('studioPreviewBtn').click();
+      }
+    };
+  }
+  if (el('kbBatchFolderBtn')) {
+    el('kbBatchFolderBtn').onclick = async () => {
+      const folders = state?.actions_state?.allowed_folders || [];
+      if (!folders.length) {
+        toast('Toplu klasör aktarımı için önce Araçlar sekmesinden bir izinli çalışma klasörü ekleyin.');
+        return showPage('actions');
+      }
+      const chosen = prompt('İçe aktarılacak izinli klasör yolunu onaylayın:', folders[0]);
+      if (!chosen?.trim()) return;
+      try {
+        el('kbProgressStatus').textContent = 'Klasördeki belgeler taranıyor ve indeksleniyor...';
+        const res = await request('/api/knowledge', {
+          action:'import_folder',
+          folder:chosen.trim(),
+          project:el('kbProjectSelect').value,
+        });
+        renderState(res.state);
+        renderKbPage();
+        el('kbProgressStatus').textContent = `${res.imported} belge başarıyla toplu indekslendi.`;
+        toast(`${res.imported} belge bilgi tabanına eklendi.`);
+      } catch (error) {
+        el('kbProgressStatus').textContent = 'Hata: ' + error.message;
+        toast(error.message);
+      }
+    };
+  }
+
+  // Drag & Drop files onto chat view (Images -> Vision, Docs -> Knowledge Base)
+  const chatView = el('view-chat');
+  chatView.addEventListener('dragover', e => { e.preventDefault(); chatView.classList.add('drag-active'); });
+  chatView.addEventListener('dragleave', () => chatView.classList.remove('drag-active'));
+  chatView.addEventListener('drop', async e => {
+    e.preventDefault();
+    chatView.classList.remove('drag-active');
+    const files = [...(e.dataTransfer?.files || [])];
+    for (const file of files) {
+      if (['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+        if (pendingVisionImages.length >= 4) { toast('En fazla 4 görsel eklenebilir.'); continue; }
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+        pendingVisionImages.push({name:file.name, mime:file.type, size:file.size, data:btoa(bin)});
+        renderVisionBar();
+        toast(`Görsel eklendi: ${file.name}`);
+      } else if (/\.(txt|md|pdf|docx|csv|xlsx)$/i.test(file.name)) {
+        try {
+          const bytes = new Uint8Array(await file.arrayBuffer());
+          let bin = '';
+          for (let i = 0; i < bytes.length; i += 8192) bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+          const activeProj = currentChat()?.project || '';
+          const res = await request('/api/knowledge', {action:'import', name:file.name, data:btoa(bin), project:activeProj});
+          renderState(res.state);
+          toast(`Belge aktif çalışma alanına indekslendi: ${file.name}`);
+        } catch (error) { toast(error.message); }
+      } else {
+        toast(`Desteklenmeyen dosya türü: ${file.name}`);
+      }
+    }
+  });
   if (el('voicePersonaSelect')) {
     el('voicePersonaSelect').onchange = async () => {
       try {

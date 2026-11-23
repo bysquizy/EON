@@ -137,6 +137,9 @@ async function streamAnswer(text, index = null) {
     let pending = '';
 
     try {
+      let sentenceBuf = '';
+      const liveVoice = el('liveVoiceToggle')?.getAttribute('aria-pressed') === 'true';
+      if (liveVoice && typeof stopVoicePlayback === 'function') stopVoicePlayback();
       while (true) {
         const {value, done} = await reader.read();
         if (done) break;
@@ -150,9 +153,21 @@ async function streamAnswer(text, index = null) {
           if (event.delta) {
             queuedText += event.delta;
             if (!frame) frame = requestAnimationFrame(flush);
+            if (liveVoice && typeof enqueueLiveSentence === 'function') {
+              sentenceBuf += event.delta;
+              const match = /^([\s\S]{18,}?[.!?…]+(?:\s+|\n|$))([\s\S]*)$/.exec(sentenceBuf);
+              if (match) {
+                enqueueLiveSentence(match[1].trim());
+                sentenceBuf = match[2];
+              }
+            }
           }
           if (event.state) {
             completed = true;
+            if (liveVoice && sentenceBuf.trim() && typeof enqueueLiveSentence === 'function') {
+              enqueueLiveSentence(sentenceBuf.trim());
+              sentenceBuf = '';
+            }
             if (state.active_chat_id === id && event.state.active_chat_id === id) renderState(event.state);
           }
         }

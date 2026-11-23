@@ -19,6 +19,53 @@ from .actions import resolve_inside_allowed, ActionError
 
 STUDIO_FORMATS = {"docx", "pdf", "xlsx", "csv", "md", "txt"}
 
+STUDIO_TEMPLATES = {
+    "meeting": {
+        "name": "Toplantı & Karar Özeti",
+        "title": "Toplantı ve Eylem Özeti",
+        "content": (
+            "# Toplantı Özeti\n\n"
+            "## Alınan Kararlar\n"
+            "- Birinci ana karar ve kapsamı\n"
+            "- İkinci teknik/operasyonel karar\n\n"
+            "## Eylem Planı\n"
+            "| Görev | Sorumlu | Tamamlanma % |\n"
+            "| --- | --- | --- |\n"
+            "| Mimari Doğrulama | Mühendislik | 100 |\n"
+            "| Güvenlik Testi | Güvenlik | 85 |\n"
+            "| Sürüm Paketi | Ürün | 90 |\n"
+        ),
+    },
+    "research": {
+        "name": "Kaynaklı Araştırma Raporu",
+        "title": "Araştırma ve Analiz Raporu",
+        "content": (
+            "# Yönetici Özeti\n"
+            "Araştırma konusunun temel bulguları ve sentez özeti.\n\n"
+            "## Önemli Bulgular\n"
+            "1. Doğrulanmış birincil bulgu\n"
+            "2. Karşılaştırmalı performans verisi\n\n"
+            "## Karşılaştırma Tablosu\n"
+            "| Kriter | Seçenek A | Seçenek B |\n"
+            "| --- | --- | --- |\n"
+            "| Hız Puanı | 92 | 78 |\n"
+            "| Verimlilik | 88 | 95 |\n"
+        ),
+    },
+    "budget": {
+        "name": "Bütçe & Metrik Tablosu",
+        "title": "Performans ve Kaynak Tablosu",
+        "content": (
+            "| Kalem | Planlanan | Gerçekleşen |\n"
+            "| --- | --- | --- |\n"
+            "| Altyapı | 1200 | 1150 |\n"
+            "| Geliştirme | 3400 | 3200 |\n"
+            "| Test & Kalite | 900 | 950 |\n"
+            "| Dokümantasyon | 500 | 480 |\n"
+        ),
+    },
+}
+
 
 class StudioError(ValueError):
     pass
@@ -57,10 +104,35 @@ def build_docx_bytes(title: str, content: str) -> bytes:
             f'<w:p><w:pPr><w:pStyle w:val="Title"/></w:pPr>'
             f'<w:r><w:rPr><w:b/><w:sz w:val="36"/></w:rPr><w:t>{_esc(title.strip())}</w:t></w:r></w:p>'
         )
-    for raw_line in content.splitlines():
-        line = raw_line.rstrip()
+    lines = content.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].rstrip()
         if not line:
             paragraphs.append("<w:p/>")
+            i += 1
+            continue
+        if "|" in line and i + 1 < len(lines) and re.match(r"^\s*\|?(?:\s*:?-{2,}:?\s*\|)+\s*:?-{2,}:?\s*\|?\s*$", lines[i + 1]):
+            table_rows = []
+            headers = [c.strip() for c in line.strip().strip("|").split("|")]
+            table_rows.append((True, headers))
+            i += 2
+            while i < len(lines) and "|" in lines[i]:
+                cells = [c.strip() for c in lines[i].strip().strip("|").split("|")]
+                if any(cells):
+                    table_rows.append((False, cells))
+                i += 1
+            tr_xml = []
+            for is_hdr, row_cells in table_rows:
+                tc_xml = []
+                for cell_val in row_cells[:16]:
+                    run_pr = "<w:rPr><w:b/></w:rPr>" if is_hdr else ""
+                    tc_xml.append(
+                        f'<w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr>'
+                        f'<w:p><w:r>{run_pr}<w:t xml:space="preserve">{_esc(cell_val)}</w:t></w:r></w:p></w:tc>'
+                    )
+                tr_xml.append(f'<w:tr>{"".join(tc_xml)}</w:tr>')
+            paragraphs.append(f'<w:tbl><w:tblPr/><w:tblGrid/>{"".join(tr_xml)}</w:tbl>')
             continue
         m_head = re.match(r"^(#{1,3})\s+(.+)", line)
         if m_head:
@@ -72,6 +144,16 @@ def build_docx_bytes(title: str, content: str) -> bytes:
         else:
             paragraphs.append(
                 f'<w:p><w:r><w:t xml:space="preserve">{_esc(line)}</w:t></w:r></w:p>'
+            )
+        i += 1
+    chart_pairs = _extract_chart_pairs(content)
+    if chart_pairs:
+        max_v = max(max(abs(v) for _, v in chart_pairs), 1.0)
+        paragraphs.append('<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Özet Grafik</w:t></w:r></w:p>')
+        for lbl, val in chart_pairs:
+            bars = "█" * max(1, int(round((abs(val) / max_v) * 18)))
+            paragraphs.append(
+                f'<w:p><w:r><w:t xml:space="preserve">{_esc(lbl)}: {bars} ({val:g})</w:t></w:r></w:p>'
             )
     doc_xml = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -168,18 +250,38 @@ def build_xlsx_bytes(title: str, content: str) -> bytes:
     return buf.getvalue()
 
 
-_TR_MAP = str.maketrans({
-    "ğ": "g", "Ğ": "G", "ü": "u", "Ü": "U", "ş": "s", "Ş": "S",
-    "ı": "i", "İ": "I", "ö": "o", "Ö": "O", "ç": "c", "Ç": "C",
+_PUNCT_MAP = str.maketrans({
     "—": "-", "–": "-", "“": '"', "”": '"', "’": "'", "‘": "'", "…": "...", "•": "*", "·": ".",
 })
 
+_TURKISH_DIFFERENCES = (
+    b"/Encoding << /Type /Encoding /BaseEncoding /WinAnsiEncoding "
+    b"/Differences [ 208 /Gbreve 221 /Idotaccent 222 /Scedilla 240 /gbreve 253 /dotlessi 254 /scedilla ] >>"
+)
 
-def _pdf_safe_line(text: str) -> str:
-    # Standard Type1 Helvetica supports WinAnsi/Latin-1; normalize unsupported glyphs cleanly
-    norm = text.translate(_TR_MAP)
-    safe = norm.encode("latin-1", errors="replace").decode("latin-1")
-    return safe.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+def _extract_chart_pairs(content: str) -> list[tuple[str, float]]:
+    rows = parse_table_rows(content)
+    if len(rows) < 2:
+        return []
+    pairs = []
+    for r in rows[1:9]:
+        if len(r) >= 2:
+            raw_num = re.sub(r"[^0-9.,-]", "", str(r[1])).replace(",", ".")
+            try:
+                val = float(raw_num)
+                if val == val:
+                    pairs.append((str(r[0]).strip()[:16] or "Veri", val))
+            except ValueError:
+                pass
+    return pairs
+
+
+def _pdf_safe_bytes(text: str) -> bytes:
+    # CP1254 (Windows Turkish) maps Ğ(208), İ(221), Ş(222), ğ(240), ı(253), ş(254) + standard Latin-1 (Ç,Ö,Ü,ç,ö,ü)
+    norm = text.translate(_PUNCT_MAP)
+    raw = norm.encode("cp1254", errors="replace")
+    return raw.replace(b"\\", b"\\\\").replace(b"(", b"\\(").replace(b")", b"\\)")
 
 
 def build_pdf_bytes(title: str, content: str) -> bytes:
@@ -200,9 +302,10 @@ def build_pdf_bytes(title: str, content: str) -> bytes:
             line = line[split_at:].lstrip()
         wrapped_lines.append(("N", line))
 
-    lines_per_page = 44
+    lines_per_page = 38
     pages_lines = [wrapped_lines[i:i + lines_per_page] for i in range(0, max(1, len(wrapped_lines)), lines_per_page)]
     pages_lines = pages_lines[:40]
+    chart_pairs = _extract_chart_pairs(content)
 
     objects: list[bytes] = []
 
@@ -210,18 +313,35 @@ def build_pdf_bytes(title: str, content: str) -> bytes:
         objects.append(body)
         return len(objects)
 
-    font_obj = add_obj(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
-    font_bold_obj = add_obj(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>")
+    font_obj = add_obj(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica " + _TURKISH_DIFFERENCES + b" >>")
+    font_bold_obj = add_obj(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold " + _TURKISH_DIFFERENCES + b" >>")
     pages_id_placeholder = add_obj(b"")  # Obj 3 reserved for /Pages
 
     page_ids = []
-    for plines in pages_lines:
-        cmds = [b"BT", b"50 780 Td", b"15 TL"]
+    for p_idx, plines in enumerate(pages_lines):
+        cmds = [b"BT", b"50 785 Td", b"15 TL"]
         for style, txt in plines:
             f_tag = b"/F2 13 Tf" if style == "B" else b"/F1 11 Tf"
-            escaped = _pdf_safe_line(txt).encode("latin-1")
+            escaped = _pdf_safe_bytes(txt)
             cmds.append(f_tag + b" (" + escaped + b") Tj T*")
         cmds.append(b"ET")
+
+        # Draw vector bar chart at the bottom of the first page if numeric table rows exist
+        if p_idx == 0 and chart_pairs:
+            max_v = max(max(abs(v) for _, v in chart_pairs), 1.0)
+            cmds.append(b"0.35 0.46 0.85 rg 0.6 0.68 0.9 RG 0.8 w")
+            cmds.append(b"50 75 480 115 re S")
+            bar_w = max(18, min(52, int(420 / len(chart_pairs)) - 12))
+            for idx_bar, (lbl, val) in enumerate(chart_pairs):
+                bx = 68 + idx_bar * (bar_w + 14)
+                bh = max(4, int((abs(val) / max_v) * 78))
+                by = 95
+                cmds.append(f"0.35 0.46 0.85 rg {bx} {by} {bar_w} {bh} re f".encode("ascii"))
+                lbl_safe = _pdf_safe_bytes(lbl[:10])
+                val_safe = _pdf_safe_bytes(f"{val:g}")
+                cmds.append(b"0.1 0.15 0.3 rg BT /F1 8 Tf " + f"{bx} {by + bh + 4} Td (".encode("ascii") + val_safe + b") Tj ET")
+                cmds.append(b"0.2 0.25 0.4 rg BT /F1 8 Tf " + f"{bx} {by - 12} Td (".encode("ascii") + lbl_safe + b") Tj ET")
+
         stream_data = b"\n".join(cmds)
         content_id = add_obj(f"<< /Length {len(stream_data)} >>\nstream\n".encode("ascii") + stream_data + b"\nendstream")
         page_body = (

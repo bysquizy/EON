@@ -67,6 +67,28 @@ class Vault:
         finally:
             Path(temp).unlink(missing_ok=True)
 
+    def rotate_backups(self, keep: int = 3) -> None:
+        if not self.path.exists() or keep < 1:
+            return
+        try:
+            raw = self.path.read_bytes()
+            for idx in range(keep, 1, -1):
+                src = self.path.with_suffix(f".bak{idx - 1}.dpapi")
+                dst = self.path.with_suffix(f".bak{idx}.dpapi")
+                if src.exists():
+                    os.replace(src, dst)
+            fd, temp = tempfile.mkstemp(dir=self.path.parent)
+            try:
+                with os.fdopen(fd, "wb") as handle:
+                    handle.write(raw)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temp, self.path.with_suffix(".bak1.dpapi"))
+            finally:
+                Path(temp).unlink(missing_ok=True)
+        except OSError:
+            pass
+
     def save(self, data):
         encrypted = protect(json.dumps(data, ensure_ascii=False).encode())
         if len(encrypted) > 32 * 1024 * 1024:

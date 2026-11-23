@@ -1,8 +1,14 @@
-# EON v0.5.0
+# EON v0.6.0
 
 EON, Windows üzerinde çalışan yerel öncelikli kişisel yapay zekâ çalışma ortamıdır. Varsayılan sağlayıcı bilgisayarındaki yerel Ollama servisidir (`127.0.0.1:11434`). İsteğe bağlı olarak Google AI Studio API anahtarınla ayrı ve onaylı Gemini bulut sohbetleri açabilirsin.
 
-## v0.5.0 ile Gelen Başlıca Özellikler
+## v0.6.0 & v0.5.0 ile Gelen Başlıca Özellikler
+
+- **Çok Adımlı Ajan Planı & EON Actions:** İzinli çalışma klasörlerinde dosya arama, okuma, özetleme, klasör oluşturma, metin belgesi üretme, güvenli yeniden adlandırma ve sohbet içi çok adımlı onay kartları.
+- **EON Projects 2.0 & Bilgi Tabanı 3.0:** TXT, MD, PDF, DOCX, XLSX, PPTX, CSV, HTML, JSON ve kod dosyaları için SQLite FTS5 + RRF hibrit arama, tıklanabilir kaynak inceleyici ve Windows yerleşik çevrimdışı OCR (`Windows.Media.Ocr`).
+- **Doğal Neural HD Ses (Voice 2.0):** Doğrudan kurulu gelen `AhmetNeural` ve `EmelNeural` 24kHz doğal ses motoru, cümle bazlı canlı akışlı konuşma, araya girme (barge-in) ve çevrimdışı SAPI yedeği.
+- **Tam Çevrimdışı Mod (Offline Kill-Switch) & Network Inspector:** Tek tıkla tüm dış ağ bağlantılarını kapatma, şeffaf dış ağ günlüğü, ayrı `knowledge.dpapi` kasası ve 3 kademeli döngüsel şifreli yedekleme.
+- **Masaüstü Pencere (`--app`) & Sistem Tepsisi (`--tray`):** `baslat.bat` ile bağımsız masaüstü penceresinde veya `baslat.bat --tray` ile Windows sistem tepsisinde çalışma; `Ctrl+V` ile panodan doğrudan ekran görüntüsü yapıştırma.
 
 - **EON Projects 2.0 & Yerel Bilgi Tabanı:** Her proje için ayrı yönergeler, çalışma notları, model/profil seçimi ve yerel belge indeksi (TXT, MD, PDF, DOCX, CSV, XLSX). SQLite FTS5 / BM25 ve isteğe bağlı Ollama vektör gömmeleriyle çevrimdışı kaynaklı arama.
 - **EON Actions:** İzinli çalışma klasörlerinde dosya arama, okuma, özetleme, klasör oluşturma, metin belgesi üretme, güvenli yeniden adlandırma ve uygulama başlatma. Yazma/değiştirme işlemlerinde önizleme, açık kullanıcı onayı, önceki sürüme geri alma (rollback) ve yerel denetim kaydı (audit log).
@@ -19,4 +25,4 @@ EON, Windows üzerinde çalışan yerel öncelikli kişisel yapay zekâ çalış
 2. Proje klasöründeki `baslat.bat` dosyasını aç. Terminali açık tut (veya konsolsuz açılış için `baslat.bat --silent` kullan).
 3. Yeni sohbet başlat veya **Ctrl+K** ile tüm çalışma alanı komutları, projeler, belgeler, modeller ve uygulamalar arasında geçiş yap.
 
-[Windows kurulumu](docs/SETUP_WINDOWS.md) · [Mimari](docs/ARCHITECTURE.md) · [Gizlilik](docs/PRIVACY.md) · [Güvenlik](SECURITY.md) · [Sürüm notları](docs/releases/v0.5.0.md)
+[Windows kurulumu](docs/SETUP_WINDOWS.md) · [Mimari](docs/ARCHITECTURE.md) · [Gizlilik](docs/PRIVACY.md) · [Güvenlik](SECURITY.md) · [Sürüm notları](docs/releases/v0.6.0.md)

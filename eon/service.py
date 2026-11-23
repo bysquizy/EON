@@ -14,9 +14,9 @@ from .provider import LocalModelError, LocalOllama, StreamingProvider
 from .session import ConversationCollection
 from .tools import ToolError, calculate
 from .launcher import ApplicationRegistry
-from .knowledge import KnowledgeBase, KnowledgeError
+from .knowledge import KnowledgeBase, KnowledgeError, sanitize_untrusted_doc_text, windows_native_ocr
 from .actions import ActionCenter, ActionError, redact_text
-from .studio_gen import preview_studio_document, save_or_encode_studio_document, StudioError
+from .studio_gen import STUDIO_TEMPLATES, preview_studio_document, save_or_encode_studio_document, StudioError
 from .productivity import ProductivityCenter, VoiceEngine, system_memory_info, validate_vision_image
 
 
@@ -80,14 +80,19 @@ class EonService:
         self.productivity = ProductivityCenter()
         self.voice = VoiceEngine()
         self.request_log = []
+        self.network_log = []
+        self.offline_kill_switch = False
         self.last_error = ""
         self.chat_sources = {}
+        self.chat_action_cards = {}
         self.gemini_parts_history = {}
         self.undo = {}
         self.weather_pref = {"asked":False, "enabled":False}
         self.legacy_backup = False
         self.pre_050_backup = False
+        self.pre_060_backup = False
         self.vault = None
+        self.kb_vault_path = Path(vault_path).with_name("knowledge.dpapi") if vault_path else None
         self.storage_notice = "Yalnızca bu oturumda saklanır."
         if vault_path:
             candidate = Vault(vault_path)
@@ -96,6 +101,13 @@ class EonService:
                 if data is not None:
                     self._load_data(data)
                     self.pre_050_backup = "v050" not in data
+                    self.pre_060_backup = data.get("v050", {}).get("release") != "0.6.0"
+                if self.kb_vault_path and self.kb_vault_path.exists():
+                    from .vault import protect
+                    import json as _json
+                    kb_data = _json.loads(protect(self.kb_vault_path.read_bytes(), decrypt=True))
+                    if isinstance(kb_data, dict) and isinstance(kb_data.get("knowledge"), dict):
+                        self.knowledge.restore(kb_data["knowledge"])
                 self.vault = candidate
                 self.storage_notice = "Windows hesabınla şifrelenerek kaydedilir."
             except (ImportError, OSError, ValueError, TypeError, KeyError, AttributeError):
@@ -210,20 +222,56 @@ class EonService:
         self.productivity = prod
         raw_sources = v050.get("chat_sources", {})
         self.chat_sources = raw_sources if isinstance(raw_sources, dict) else {}
+        self.offline_kill_switch = bool(v050.get("offline_kill_switch", False))
+        v_cfg = v050.get("voice_config", {})
+        if isinstance(v_cfg, dict):
+            try:
+                self.voice.configure(
+                    voice=v_cfg.get("selected"),
+                    rate=v_cfg.get("rate"),
+                    pitch=v_cfg.get("pitch"),
+                    auto_speak=v_cfg.get("auto_speak"),
+                )
+            except ValueError:
+                pass
 
-    def backup_data(self):
+    def _log_network(self, host: str, purpose: str, status: str, bytes_sent: int = 0) -> None:
         with self._lock:
+            self.network_log.append({
+                "time": int(time.time()),
+                "host": host,
+                "purpose": purpose,
+                "status": status,
+                "bytes": int(bytes_sent),
+            })
+            if len(self.network_log) > 60:
+                self.network_log = self.network_log[-60:]
+
+    def _require_online_allowed(self, host: str, purpose: str, bytes_sent: int = 0) -> None:
+        with self._lock:
+            if self.offline_kill_switch:
+                self._log_network(host, purpose, "BLOCKED (Offline Kill-Switch)", bytes_sent)
+                raise ValueError("Tam Çevrimdışı Mod (Offline Kill-Switch) etkin. Dış ağ bağlantılarına izin verilmiyor.")
+            self._log_network(host, purpose, "ALLOWED", bytes_sent)
+
+    def backup_data(self, *, include_knowledge: bool = True):
+        with self._lock:
+            v050_block = {
+                "release": "0.6.0",
+                "memory_meta": self.memory_meta,
+                "actions": self.actions.dump(),
+                "productivity": self.productivity.dump(),
+                "chat_sources": self.chat_sources,
+                "offline_kill_switch": self.offline_kill_switch,
+                "voice_config": self.voice.voices(),
+            }
+            if include_knowledge:
+                v050_block["knowledge"] = self.knowledge.dump()
             return {"schema": 3, "cloud_chats": self.cloud_chats, "weather": self.weather_pref,
                     "metrics": self.metrics, "icons": self.icons, "workspace": self.workspace.dump(),
                     "chats": self.chats.dump(), "memory": self.memory, "instructions": self.instructions,
                     "settings": vars(self.settings), "style": self.style, "extras": self.extras,
-                    "v050": {
-                        "memory_meta": self.memory_meta,
-                        "knowledge": self.knowledge.dump(),
-                        "actions": self.actions.dump(),
-                        "productivity": self.productivity.dump(),
-                        "chat_sources": self.chat_sources,
-                    }}
+                    "v050": v050_block}
 
     def restore_data(self, data):
         candidate = EonService(launcher=self.launcher)
@@ -237,7 +285,9 @@ class EonService:
             try:
                 self.vault.backup_legacy()
                 self.vault.backup_legacy(".pre-v050.dpapi")
-                self.vault.save(candidate.backup_data())
+                self.vault.save(candidate.backup_data(include_knowledge=not bool(self.kb_vault_path)))
+                if self.kb_vault_path:
+                    Vault(self.kb_vault_path).save({"knowledge": candidate.knowledge.dump()})
                 for key in ("chats","workspace","memory","instructions","settings","style",
                             "cloud_chats","weather_pref","metrics","icons","extras",
                             "memory_meta","knowledge","actions","productivity","chat_sources"):
@@ -253,7 +303,7 @@ class EonService:
             finally:
                 self._generation_lock.release()
 
-    def _save(self):
+    def _save(self, *, save_knowledge: bool = False):
         if self.vault:
             try:
                 if self.legacy_backup:
@@ -262,7 +312,13 @@ class EonService:
                 if self.pre_050_backup:
                     self.vault.backup_legacy(".pre-v050.dpapi")
                     self.pre_050_backup = False
-                self.vault.save(self.backup_data())
+                if self.pre_060_backup:
+                    self.vault.backup_legacy(".pre-v060.dpapi")
+                    self.pre_060_backup = False
+                self.vault.rotate_backups(3)
+                self.vault.save(self.backup_data(include_knowledge=not bool(self.kb_vault_path)))
+                if save_knowledge and self.kb_vault_path:
+                    Vault(self.kb_vault_path).save({"knowledge": self.knowledge.dump()})
             except (ValueError, OSError):
                 self.vault.close()
                 self.vault = None
@@ -285,6 +341,7 @@ class EonService:
             elif action == "remove":
                 secret(self.secret_path, "")
             elif action == "test":
+                self._require_online_allowed("generativelanguage.googleapis.com", "Gemini model listesi testi")
                 with self._lock:
                     self.cloud_models = []
                 models = Gemini(secret(self.secret_path)).models()
@@ -296,6 +353,7 @@ class EonService:
                     self._save()
                 return {"models":models,"selected":selected}
             elif action == "sample" and consent is True and model in self.cloud_models:
+                self._require_online_allowed("generativelanguage.googleapis.com", "Gemini örnek yanıt testi")
                 parts = []
                 Gemini(secret(self.secret_path), model, 128).stream(
                     [{"role":"system","content":"Reply briefly."},
@@ -331,6 +389,7 @@ class EonService:
     def compare(self, model, consent):
         if consent is not True or model not in self.cloud_models:
             raise ValueError("Model seçimi ve ölçüm onayı gerekli.")
+        self._require_online_allowed("generativelanguage.googleapis.com", "Model karşılaştırma")
         if not self._generation_lock.acquire(blocking=False):
             raise ValueError("Önce mevcut yanıtın tamamlanmasını bekle.")
         try:
@@ -404,6 +463,19 @@ class EonService:
                 self.settings = replace(self.settings, keep_alive=value)
                 self._save()
                 return self.snapshot()
+        if action == "offline":
+            if type(value) is not bool:
+                raise ValueError("Çevrimdışı mod değeri geçersiz.")
+            with self._lock:
+                self.offline_kill_switch = value
+                if value:
+                    for job in self.jobs.values():
+                        if getattr(job, "chat_id", None) in self.cloud_chats:
+                            job.cancel()
+                self._save()
+                return self.snapshot()
+        if action == "desktop_shortcut":
+            return self.create_desktop_shortcut()
         if action == "unload":
             if not self._generation_lock.acquire(blocking=False):
                 raise ValueError("Boşaltmadan önce yanıtın tamamlanmasını bekle.")
@@ -424,14 +496,18 @@ class EonService:
         with self._lock:
             gemini_configured = bool(self.secret_path and self.secret_path.exists())
             req_log = list(reversed(self.request_log[-25:]))
+            net_log = list(reversed(self.network_log[-25:]))
             last_err = self.last_error
+            kill_sw = self.offline_kill_switch
+            privacy_lbl = "Tam Çevrimdışı (Kill-Switch Etkin)" if kill_sw else ("Bulut Paylaşımı Açık" if self.extras["gemini"]["consent"] else "Tam Yerel (Bulut Kapalı)")
         return {"connected":connected, "loaded":loaded, "busy":self._generation_lock.locked(),
                 "storage":self.storage_notice, "gemini_tested":bool(self.cloud_models),
                 "gemini_configured":gemini_configured, "gemini_models":list(self.cloud_models),
-                "server":"ok", "selected":self.settings.model, "version":"0.5.0",
+                "server":"ok", "selected":self.settings.model, "version":"0.6.0",
                 "system_memory":sys_ram, "capabilities":caps,
-                "request_log":req_log, "last_error":last_err,
-                "privacy_mode":"Bulut Paylaşımı Açık" if self.extras["gemini"]["consent"] else "Tam Yerel (Bulut Kapalı)"}
+                "request_log":req_log, "network_log":net_log,
+                "offline_kill_switch":kill_sw, "last_error":last_err,
+                "privacy_mode":privacy_lbl}
 
     def extra_action(self, data):
         with self._lock:
@@ -542,6 +618,7 @@ class EonService:
 
     def weather_report(self, consent):
         from .weather import forecast
+        self._require_online_allowed("api.open-meteo.com", "Hava durumu sorgusu")
         with self._lock:
             pref = self.weather_pref.copy()
         result = forecast(pref["enabled"] and consent is True,pref.get("lat"),pref.get("lon"))
@@ -768,7 +845,8 @@ class EonService:
                     "metrics":self.metrics.get(ident, {}), "keep_alive":self.settings.keep_alive,
                     "weather_pref":dict(self.weather_pref), "projects": self.workspace.projects.copy(), "modes": self.workspace.modes(),
                     "look": self.workspace.look.copy(), "stars": item["stars"][:], "revision": item["revision"],
-                    "version": "0.5.0", "history": history,
+                    "version": "0.6.0", "history": history,
+                    "offline_kill_switch": self.offline_kill_switch,
                     "conversations": self.chats.list(),
                     "active_chat_id": self.chats.active_id,
                     "style": self.style, "model": self.settings.model,
@@ -784,7 +862,9 @@ class EonService:
                     },
                     "productivity": self.productivity.summary(),
                     "voice_state": self.voice.voices(),
+                    "studio_templates": STUDIO_TEMPLATES,
                     "chat_sources": self.chat_sources.get(ident, {}),
+                    "chat_action_cards": self.chat_action_cards.get(ident, {}),
                     "profiles": PROFILES,
                     "last_error": self.last_error,
                     "instructions": self.instructions, "context": self.settings.context_tokens,
@@ -976,12 +1056,17 @@ class EonService:
                     for hit in kb_hits:
                         loc = f"Sayfa {hit['page']}" if hit["page"] else hit["section"]
                         tag = f"[{hit['name']} · {loc}]"
-                        snippet_block = f"{tag}\n{hit['snippet'][:700]}"
+                        safe_snip, inj_flagged = sanitize_untrusted_doc_text(hit["snippet"][:700])
+                        if inj_flagged:
+                            self.actions._log("prompt_shield", hit["name"], "filtered", False, "Belge içi prompt injection kalıbı filtrelendi")
+                        snippet_block = f"{tag}\n{safe_snip}"
                         cost = len(snippet_block.encode()) + 24
                         if cost <= min(budget // 2, 2400):
                             kb_snippets.append(snippet_block)
                             kb_citations.append({
                                 "kind": "document",
+                                "doc_id": hit["doc_id"],
+                                "chunk_index": hit["chunk_index"],
                                 "title": hit["name"],
                                 "section": hit["section"],
                                 "page": hit["page"],
@@ -1004,10 +1089,12 @@ class EonService:
                         break
                     start -= 2
                     budget -= cost
-                # Preserve brief excerpts of earlier user turns when space remains.
+                # Rolling context compression: summarize older user+assistant turns when space remains.
                 earlier = []
-                for position in range(start - 2, max(-2, start - 10), -2):
-                    excerpt = history[position]["content"][:100]
+                for position in range(start - 2, max(-2, start - 14), -2):
+                    u_exc = history[position]["content"].replace("\n", " ")[:90]
+                    a_exc = history[position + 1]["content"].replace("\n", " ")[:110] if position + 1 < len(history) else ""
+                    excerpt = f"Soru: {u_exc} -> Yanıt: {a_exc}" if a_exc else u_exc
                     cost = len(excerpt.encode()) + 32
                     if cost > budget:
                         break
@@ -1015,7 +1102,7 @@ class EonService:
                     budget -= cost
                 context = []
                 if earlier:
-                    context.append({"role": "user", "content": "Önceki mesajlarımdan alıntılar: " +
+                    context.append({"role": "user", "content": "Önceki konuşma turlarının sıkıştırılmış özeti: " +
                                     " / ".join(reversed(earlier))})
                 hist_slice = [dict(m) for m in history[start:end]]
                 if cloud and ident in self.gemini_parts_history:
@@ -1026,6 +1113,7 @@ class EonService:
                             m["gemini_parts"] = saved_parts_map[abs_idx]
                 messages = [prompt, *context, *hist_slice, user]
                 if cloud:
+                    self._require_online_allowed("generativelanguage.googleapis.com", "Gemini sohbet yanıtı")
                     provider: StreamingProvider = Gemini(secret(self.secret_path), cloud, cloud_output,
                                                          profile=active_profile, search=use_research)
                 else:
@@ -1112,6 +1200,13 @@ class EonService:
                         chat_src_map.pop(k_idx, None)
                 if all_sources:
                     chat_src_map[str(assistant_idx)] = all_sources
+                action_card = self._detect_inline_action_proposal(text, answer)
+                card_map = self.chat_action_cards.setdefault(ident, {})
+                for k_idx in list(card_map):
+                    if int(k_idx) >= end:
+                        card_map.pop(k_idx, None)
+                if action_card:
+                    card_map[str(assistant_idx)] = action_card
                 if cloud and getattr(provider, "raw_parts", None):
                     gmap = self.gemini_parts_history.setdefault(ident, {})
                     for k_idx in list(gmap):
@@ -1165,6 +1260,7 @@ class EonService:
                 if not history:
                     raise ValueError("Özetlenecek sohbet yok.")
             if cloud:
+                self._require_online_allowed("generativelanguage.googleapis.com", "Gemini sohbet özeti")
                 provider = Gemini(secret(self.secret_path), cloud, self.settings.output_tokens)
             else:
                 self._require_model()
@@ -1249,6 +1345,72 @@ class EonService:
             raise ValueError("Komut bulunamadı. /yardim yaz.")
         return {"message": msg, "state": self.snapshot()}
 
+    def _detect_inline_action_proposal(self, user_text: str, assistant_text: str) -> dict | None:
+        import re
+        if not isinstance(user_text, str):
+            return None
+        low = user_text.casefold()
+        steps = []
+        # Step 1: Folder creation proposal
+        m_dir = re.search(r"(?:klasör|dizin)\s+(?:oluştur|aç)\s*[:=]?\s*([A-Za-z0-9_çğıöşüÇĞİÖŞÜ/-]{1,64})", user_text, re.I)
+        if m_dir and self.actions.allowed_folders:
+            try:
+                res = self.actions.preview_or_run("create_folder", {"path": m_dir.group(1).strip()})
+                if res.get("preview"):
+                    steps.append(res["preview"])
+            except Exception:
+                pass
+        # Step 2: File write proposal
+        if self.actions.allowed_folders and any(w in low for w in ("kaydet", "oluştur", "yaz", "dosya")):
+            for m_file in re.finditer(r"([A-Za-z0-9_çğıöşüÇĞİÖŞÜ.-]{1,64}\.(?:md|txt|csv|json))", user_text):
+                fname = m_file.group(1)
+                try:
+                    res = self.actions.preview_or_run("write_text_file", {"path": fname, "content": assistant_text})
+                    if res.get("preview"):
+                        steps.append(res["preview"])
+                except Exception:
+                    pass
+        if not steps:
+            return None
+        if len(steps) == 1:
+            return {**steps[0], "steps": steps}
+        return {
+            "token": steps[0]["token"],
+            "skill": "multi_step_plan",
+            "title": f"Çok Adımlı Ajan Planı ({len(steps)} adım)",
+            "risk": "high",
+            "change_summary": " → ".join(s["change_summary"] for s in steps),
+            "steps": steps,
+        }
+
+    def create_desktop_shortcut(self) -> dict:
+        import os
+        import subprocess
+        import sys
+        if sys.platform != "win32":
+            raise ValueError("Masaüstü kısayolu yalnız Windows'ta oluşturulabilir.")
+        desktop = Path(os.environ.get("USERPROFILE", str(Path.home()))) / "Desktop"
+        if not desktop.is_dir():
+            raise ValueError("Masaüstü klasörü bulunamadı.")
+        bat_path = Path(__file__).resolve().parents[1] / "baslat.bat"
+        lnk_path = desktop / "EON Çalışma Ortamı.lnk"
+        exe = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+        script = (
+            "[Console]::InputEncoding=[Text.UTF8Encoding]::new($false);"
+            "$p=[Console]::In.ReadToEnd()|ConvertFrom-Json;"
+            "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($p.lnk);"
+            "$s.TargetPath=$p.target;$s.WorkingDirectory=$p.cwd;$s.Arguments='--tray';"
+            "$s.Description='EON Kisisel AI Calisma Ortami';$s.Save()"
+        )
+        import json as _json
+        subprocess.run(
+            [str(exe), "-NoProfile", "-NonInteractive", "-Command", script],
+            input=_json.dumps({"lnk": str(lnk_path), "target": str(bat_path), "cwd": str(bat_path.parent)}),
+            text=True, encoding="utf-8", capture_output=True, check=True, timeout=8,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return {"shortcut": str(lnk_path)}
+
     def knowledge_action(self, payload: dict) -> dict:
         import base64
         action = payload.get("action")
@@ -1272,12 +1434,57 @@ class EonService:
                     embed_fn = prov.embed
             doc = self.knowledge.import_document(name=name, raw=raw, project=project, embed_fn=embed_fn)
             with self._lock:
-                self._save()
+                self._save(save_knowledge=True)
                 return {"document": doc, "state": self.snapshot()}
+        if action == "import_folder":
+            folder_raw = payload.get("folder", "")
+            project = payload.get("project", "")
+            if not isinstance(project, str) or (project and project not in self.workspace.projects):
+                raise ValueError("Geçerli bir proje seç.")
+            with self._lock:
+                allowed = list(self.actions.allowed_folders)
+            from .actions import resolve_inside_allowed
+            from .knowledge import SUPPORTED_EXTENSIONS
+            folder_path, _ = resolve_inside_allowed(folder_raw, allowed, must_exist=True, allow_dir=True)
+            if not folder_path.is_dir():
+                raise ValueError("Seçilen konum bir klasör değil.")
+            imported_docs = []
+            for entry in sorted(folder_path.iterdir()):
+                if entry.is_file() and not entry.is_symlink() and entry.suffix.lower() in SUPPORTED_EXTENSIONS:
+                    try:
+                        doc = self.knowledge.import_document(name=entry.name, raw=entry.read_bytes(), project=project)
+                        imported_docs.append(doc)
+                    except Exception:
+                        pass
+                    if len(imported_docs) >= 16:
+                        break
+            if not imported_docs:
+                raise ValueError("Klasörde içe aktarılabilir desteklenen belge (.txt, .md, .pdf, .docx, .csv, .xlsx) bulunamadı.")
+            with self._lock:
+                self._save(save_knowledge=True)
+                return {"imported": len(imported_docs), "documents": imported_docs, "state": self.snapshot()}
+        if action == "get_chunk":
+            return {"chunk": self.knowledge.get_chunk(payload.get("doc_id", ""), payload.get("chunk_index", 0))}
+        if action == "ocr":
+            b64 = payload.get("data", "")
+            name = payload.get("name", "ekran.png")
+            project = payload.get("project", "")
+            if not isinstance(b64, str) or not b64:
+                raise ValueError("OCR için görsel verisi gerekli.")
+            raw = base64.b64decode(b64, validate=True)
+            ocr_text = windows_native_ocr(raw, Path(name).suffix.lower())
+            if not ocr_text:
+                raise ValueError("Görselde okunabilir metin bulunamadı veya Windows OCR bileşeni yanıt vermedi.")
+            if payload.get("import_to_kb") is True:
+                doc = self.knowledge.import_document(name=Path(name).stem + "_ocr.txt", raw=ocr_text.encode("utf-8"), project=project)
+                with self._lock:
+                    self._save(save_knowledge=True)
+                    return {"text": ocr_text, "document": doc, "state": self.snapshot()}
+            return {"text": ocr_text}
         if action == "delete":
             self.knowledge.remove_document(payload.get("id", ""))
             with self._lock:
-                self._save()
+                self._save(save_knowledge=True)
                 return {"state": self.snapshot()}
         if action == "search":
             query = payload.get("query", "")
@@ -1381,7 +1588,13 @@ class EonService:
     def voice_action(self, payload: dict) -> dict:
         op = payload.get("action")
         if op == "speak":
-            return self.voice.speak(payload.get("text", ""), voice=payload.get("voice"))
+            with self._lock:
+                allow_neural = not self.offline_kill_switch
+                if allow_neural:
+                    self._log_network("speech.platform.bing.com", "Neural HD TTS ses sentezi", "ALLOWED")
+                else:
+                    self._log_network("speech.platform.bing.com", "Neural HD TTS (Çevrimdışı yerel SAPI'ye düşüldü)", "OFFLINE_FALLBACK")
+            return self.voice.speak(payload.get("text", ""), voice=payload.get("voice"), allow_neural=allow_neural)
         if op == "stop":
             return self.voice.stop()
         if op == "configure":
@@ -1391,7 +1604,9 @@ class EonService:
                 pitch=payload.get("pitch"),
                 auto_speak=payload.get("auto_speak"),
             )
-            return {"voice_state": res, "state": self.snapshot()}
+            with self._lock:
+                self._save()
+                return {"voice_state": res, "state": self.snapshot()}
         if op == "voices":
             return self.voice.voices()
         raise ValueError("Geçersiz ses işlemi.")
