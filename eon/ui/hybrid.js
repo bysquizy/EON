@@ -92,8 +92,7 @@ function wireHybrid() {
     if (requiresConsent) {
       const shared=['bu Gemini sohbetinin mesajları ve yakın geçmişi'];
       if(memory) shared.push(state.conversations.find(c=>c.id===state.active_chat_id)?.project ? 'yalnızca mevcut projede seçilen hafıza notları' : 'genel hafıza');
-      if(instructions) shared.push('genel kişisel yönergeler');
-      if(state.conversations.find(c=>c.id===state.active_chat_id)?.project) shared.push('yalnızca mevcut projenin yönergeleri ve modu');
+      if(instructions) shared.push('genel kişisel yönergeler ve yalnızca mevcut projenin yönergeleri/modu');
       const first=!prefs.consent;
       const intro=first?(state.gemini_consent_persistent?'Bu, gelecekteki Gemini sohbetleri için kalıcı bir bulut paylaşım izni verir. ':'Şifreli kasa kullanılamıyor; bu izin yalnızca bu oturum boyunca geçerli olacak. '):'Seçilen ek bağlam Google ile paylaşılacak. ';
       if (!confirm(intro+'Google’a gönderilecek: '+shared.join(', ')+'. API kotası/ücreti uygulanabilir; API hesabındaki veri koşulları geçerlidir. İzni daha sonra Ayarlar’dan kapatabilirsin. Onaylıyor musun?')) return;

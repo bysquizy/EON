@@ -722,14 +722,15 @@ class EonService:
                     settings = replace(settings,model=preferred)
                 messages = target.messages_for(text, style)
                 prompt, user = messages[0], messages[-1]
+                share_notes, share_instructions = self.cloud_sharing.get(ident, (False, False))
                 if cloud:
                     prompt["content"] = GEMINI_SYSTEM_PROMPT + " " + STYLE_GUIDANCE[style]
-                    mode = project.get("mode") if item["mode"] == "general" else ""
-                    prompt["content"] += "\n" + self.workspace.guidance({**item,"mode":mode if mode in self.workspace.modes() else item["mode"]})
+                    if share_instructions:
+                        mode = project.get("mode") if item["mode"] == "general" else ""
+                        prompt["content"] += "\n" + self.workspace.guidance({**item,"mode":mode if mode in self.workspace.modes() else item["mode"]})
                 else:
                     mode = project.get("mode") if item["mode"] == "general" else ""
                     prompt["content"] += "\n" + self.workspace.guidance({**item,"mode":mode if mode in self.workspace.modes() else item["mode"]})
-                share_notes, share_instructions = self.cloud_sharing.get(ident, (False, False))
                 if cloud and item["project"]:
                     project_notes = self.extras["projects"].get(item["project"], {}).get("notes", [])
                     if share_notes:
