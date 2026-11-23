@@ -8,6 +8,7 @@ import re
 import threading
 from urllib.parse import urlsplit
 
+from . import __version__
 from .service import EonService
 from .launcher import LaunchError, choose_executable
 from .provider import LocalModelError
@@ -63,7 +64,8 @@ class EonHandler(BaseHTTPRequestHandler):
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
-        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'none'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'")
         self.end_headers()
 
     def _json(self, status: int, value: dict) -> None:
@@ -93,10 +95,10 @@ class EonHandler(BaseHTTPRequestHandler):
             return self._json(403, {"error":"EON başlatıcısındaki bağlantıyı kullan."})
         if path == "/api/bootstrap":
             return self._json(200, {"token": self.server.token, "state": self.server.service.snapshot(),
-                                    "models": self.server.service.models(),
-                                    "apps": self.server.service.apps()})
+                                    "models": {"models": [], "selected": self.server.service.settings.model, "connected": False},
+                                    "apps": []})
         if path == "/api/health":
-            return self._json(200, {"status": "ok", "version": "0.6.0"})
+            return self._json(200, {"status": "ok", "version": __version__})
         if path == "/api/state":
             return self._json(200, self.server.service.snapshot())
         if path == "/api/models":
@@ -180,7 +182,7 @@ class EonHandler(BaseHTTPRequestHandler):
             elif route in {"/api/library/" + kind for kind in ("project", "mode", "look", "configure", "pin", "star")}:
                 result = service.library_action(route.rsplit("/", 1)[1], payload)
             elif route == "/api/credentials":
-                result = service.credentials_action(payload.get("action"), payload.get("model"), payload.get("consent"))
+                result = service.credentials_action(payload.get("action"), payload.get("model"), payload.get("consent"), payload.get("key"))
             elif route == "/api/cloud/new":
                 result = service.cloud_chat(payload.get("model"), payload.get("id"), payload.get("consent"),
                                             payload.get("memory"), payload.get("instructions"))
@@ -231,6 +233,10 @@ class EonHandler(BaseHTTPRequestHandler):
                 result = service.studio_action(payload)
             elif route == "/api/productivity":
                 result = service.productivity_action(payload)
+            elif route == "/api/volume":
+                result = service.volume_action(payload)
+            elif route == "/api/setup":
+                result = service.setup_action(payload)
             elif route == "/api/voice":
                 result = service.voice_action(payload)
             elif route == "/api/router":

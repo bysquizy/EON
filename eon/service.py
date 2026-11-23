@@ -9,6 +9,8 @@ from .gemini import Gemini, MODEL
 from .vault import Vault
 from .workspace import Workspace, check_text, fold
 
+from . import audio, hardware
+from . import __version__
 from .config import DEFAULT_MODEL, GEMINI_SYSTEM_PROMPT, LocalSettings, OUTPUT_LIMITS, PROFILES, STYLE_GUIDANCE, SYSTEM_PROMPT
 from .provider import LocalModelError, LocalOllama, StreamingProvider
 from .session import ConversationCollection
@@ -50,7 +52,7 @@ class EonService:
     def __init__(self, *, provider_factory=LocalOllama, launcher=None, model=DEFAULT_MODEL, vault_path=None):
         self.provider_factory = provider_factory
         self.chats = ConversationCollection()
-        self.launcher = launcher if launcher is not None else ApplicationRegistry()
+        self.launcher = launcher if launcher is not None else ApplicationRegistry(lazy_refresh=True)
         self.settings = LocalSettings(model=model)
         self.style = "normal"
         self.started = time.monotonic()
@@ -79,6 +81,8 @@ class EonService:
         self.actions = ActionCenter(launcher=self.launcher)
         self.productivity = ProductivityCenter()
         self.voice = VoiceEngine()
+        self.setup = {"provider": "", "done": False}
+        self._hardware = None
         self.request_log = []
         self.network_log = []
         self.offline_kill_switch = False
@@ -98,6 +102,8 @@ class EonService:
             candidate = Vault(vault_path)
             try:
                 data = candidate.open()
+                if data is None:
+                    self._apply_hardware_defaults()
                 if data is not None:
                     self._load_data(data)
                     self.pre_050_backup = "v050" not in data
@@ -223,6 +229,10 @@ class EonService:
         raw_sources = v050.get("chat_sources", {})
         self.chat_sources = raw_sources if isinstance(raw_sources, dict) else {}
         self.offline_kill_switch = bool(v050.get("offline_kill_switch", False))
+        raw_setup = v050.get("setup", {})
+        if isinstance(raw_setup, dict):
+            prov = raw_setup.get("provider", "")
+            self.setup = {"provider": prov if prov in ("gemini", "ollama") else "", "done": raw_setup.get("done") is True}
         v_cfg = v050.get("voice_config", {})
         if isinstance(v_cfg, dict):
             try:
@@ -263,6 +273,7 @@ class EonService:
                 "productivity": self.productivity.dump(),
                 "chat_sources": self.chat_sources,
                 "offline_kill_switch": self.offline_kill_switch,
+                "setup": self.setup,
                 "voice_config": self.voice.voices(),
             }
             if include_knowledge:
@@ -315,7 +326,7 @@ class EonService:
                 if self.pre_060_backup:
                     self.vault.backup_legacy(".pre-v060.dpapi")
                     self.pre_060_backup = False
-                self.vault.rotate_backups(3)
+                self.vault.rotate_backups(3, min_interval=600)
                 self.vault.save(self.backup_data(include_knowledge=not bool(self.kb_vault_path)))
                 if save_knowledge and self.kb_vault_path:
                     Vault(self.kb_vault_path).save({"knowledge": self.knowledge.dump()})
@@ -324,7 +335,7 @@ class EonService:
                 self.vault = None
                 self.storage_notice = "Kayıt başarısız. Son değişiklikler yalnız bellekte."
 
-    def credentials_action(self, action, model=None, consent=False):
+    def credentials_action(self, action, model=None, consent=False, key=None):
         import subprocess
         import sys
         with self.secret_guard:
@@ -338,6 +349,12 @@ class EonService:
                     return {"cancelled":True}
                 if result.returncode:
                     raise ValueError("Anahtar penceresi açılamadı veya kayıt başarısız.")
+            elif action == "set":
+                if not self.secret_path:
+                    raise ValueError("Anahtarı güvenle saklamak için şifreli kasa (Windows) gerekli.")
+                if not isinstance(key, str) or not key.strip():
+                    raise ValueError("Anahtar boş olamaz.")
+                secret(self.secret_path, key.strip())
             elif action == "remove":
                 secret(self.secret_path, "")
             elif action == "test":
@@ -373,7 +390,7 @@ class EonService:
                 self.cloud_models = []
                 self._save()
             configured = bool(secret(self.secret_path))
-            if action == "enter" and configured:
+            if action in ("enter", "set") and configured:
                 # Key entry is an explicit setup action; discover models without sending chat data.
                 models = Gemini(secret(self.secret_path)).models()
                 with self._lock:
@@ -415,7 +432,8 @@ class EonService:
     def cloud_chat(self, model, ident, consent, memory=False, instructions=False):
         with self._lock:
             prefs = self.extras["gemini"]
-            if (model not in self.cloud_models or
+            known = model in self.cloud_models or (model == prefs["model"] and bool(MODEL.fullmatch(model or "")))
+            if (not known or
                     (consent is not True and not prefs["consent"])):
                 raise ValueError("Bağlantıyı test et, modeli seç ve veri aktarımını onayla.")
             if consent is True:
@@ -503,7 +521,7 @@ class EonService:
         return {"connected":connected, "loaded":loaded, "busy":self._generation_lock.locked(),
                 "storage":self.storage_notice, "gemini_tested":bool(self.cloud_models),
                 "gemini_configured":gemini_configured, "gemini_models":list(self.cloud_models),
-                "server":"ok", "selected":self.settings.model, "version":"0.6.0",
+                "server":"ok", "selected":self.settings.model, "version":__version__,
                 "system_memory":sys_ram, "capabilities":caps,
                 "request_log":req_log, "network_log":net_log,
                 "offline_kill_switch":kill_sw, "last_error":last_err,
@@ -845,7 +863,8 @@ class EonService:
                     "metrics":self.metrics.get(ident, {}), "keep_alive":self.settings.keep_alive,
                     "weather_pref":dict(self.weather_pref), "projects": self.workspace.projects.copy(), "modes": self.workspace.modes(),
                     "look": self.workspace.look.copy(), "stars": item["stars"][:], "revision": item["revision"],
-                    "version": "0.6.0", "history": history,
+                    "version": __version__, "history": history,
+                    "setup": dict(self.setup), "hardware": self.hardware_profile(),
                     "offline_kill_switch": self.offline_kill_switch,
                     "conversations": self.chats.list(),
                     "active_chat_id": self.chats.active_id,
@@ -875,6 +894,16 @@ class EonService:
 
     def new_chat(self) -> dict:
         with self._lock:
+            prefs = self.extras["gemini"]
+            if (self.setup.get("provider") == "gemini" and prefs["consent"] and prefs["model"]
+                    and not self.offline_kill_switch and self.secret_path and self.secret_path.exists()
+                    and len(self.chats._items) < self.chats.max_chats):
+                ident = self.chats.new()
+                self.cloud_chats[ident] = prefs["model"]
+                self.cloud_allowed.add(ident)
+                self.cloud_sharing[ident] = (prefs["memory"], prefs["instructions"])
+                self._save()
+                return self.snapshot()
             self.chats.new()
             self._save()
             return self.snapshot()
@@ -1588,21 +1617,14 @@ class EonService:
     def voice_action(self, payload: dict) -> dict:
         op = payload.get("action")
         if op == "speak":
-            with self._lock:
-                allow_neural = not self.offline_kill_switch
-                if allow_neural:
-                    self._log_network("speech.platform.bing.com", "Neural HD TTS ses sentezi", "ALLOWED")
-                else:
-                    self._log_network("speech.platform.bing.com", "Neural HD TTS (Çevrimdışı yerel SAPI'ye düşüldü)", "OFFLINE_FALLBACK")
-            return self.voice.speak(payload.get("text", ""), voice=payload.get("voice"), allow_neural=allow_neural)
+            engine = "sapi" if payload.get("engine") == "sapi" else "browser"
+            return self.voice.speak(payload.get("text", ""), voice=payload.get("voice"), engine=engine)
         if op == "stop":
             return self.voice.stop()
         if op == "configure":
             res = self.voice.configure(
-                voice=payload.get("voice"),
-                rate=payload.get("rate"),
-                pitch=payload.get("pitch"),
-                auto_speak=payload.get("auto_speak"),
+                voice=payload.get("voice"), rate=payload.get("rate"),
+                pitch=payload.get("pitch"), auto_speak=payload.get("auto_speak"),
             )
             with self._lock:
                 self._save()
@@ -1610,6 +1632,51 @@ class EonService:
         if op == "voices":
             return self.voice.voices()
         raise ValueError("Geçersiz ses işlemi.")
+
+    def hardware_profile(self) -> dict:
+        if self._hardware is None:
+            self._hardware = hardware.detect()
+        return self._hardware
+
+    def _apply_hardware_defaults(self) -> None:
+        """First run only: choose conservative settings that fit this computer. Never overrides saved choices."""
+        spec = self.hardware_profile()["defaults"]
+        self.settings = replace(self.settings, context_tokens=spec["context"], keep_alive=spec["keep_alive"])
+
+    def setup_action(self, payload: dict) -> dict:
+        op = payload.get("action")
+        if op == "hardware":
+            installed = []
+            try:
+                installed = self.models(refresh=True)["models"]
+            except Exception:
+                pass
+            profile = dict(self.hardware_profile())
+            profile["models"] = [{**m, "installed": m["name"] in installed} for m in profile["models"]]
+            connected = bool(installed) or self.models().get("connected", False)
+            return {"hardware": profile, "ollama_connected": connected, "installed": installed}
+        if op == "complete":
+            provider = payload.get("provider")
+            if provider not in ("gemini", "ollama"):
+                raise ValueError("Kaynak gemini veya ollama olmalı.")
+            with self._lock:
+                self.setup = {"provider": provider, "done": True}
+                self._save()
+                return {"state": self.snapshot()}
+        raise ValueError("Geçersiz kurulum işlemi.")
+
+    def volume_action(self, payload: dict) -> dict:
+        op = payload.get("action")
+        try:
+            if op == "get":
+                return audio.get_state()
+            if op == "set":
+                return audio.set_level(payload.get("level"))
+            if op == "mute":
+                return audio.set_mute(payload.get("muted"))
+        except audio.AudioError as exc:
+            raise ValueError(str(exc)) from None
+        raise ValueError("Geçersiz ses düzeyi işlemi.")
 
     def router_action(self, payload: dict) -> dict:
         task = str(payload.get("task", "")).casefold()

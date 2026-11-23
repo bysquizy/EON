@@ -1,15 +1,136 @@
-/* EON v0.6.0 — Modular UI Extensions:
+/* EON v0.6.1 — Modular UI Extensions:
+   - In-process Windows Core Audio Master Volume slider + instant mute
+   - Gemini-first setup flow + hardware-tuned local Ollama model recommendations
    - Offline Kill-Switch & Network Inspector
    - Clipboard Image Paste (Ctrl+V) + Windows Native OCR trigger
-   - Hands-Free Barge-In Voice Mode
    - Live Studio Split-Pane Preview
-   - Multi-step Agent Plan Approval Cards
-   - Citation Search Term Highlighting
 */
 'use strict';
 
+let currentVolMuted = false;
+let volTimer = 0;
+
+function syncVolumeUi(v) {
+  if (!v || !v.supported) return;
+  currentVolMuted = Boolean(v.muted);
+  const lvl = Number.isFinite(v.level) ? v.level : 50;
+  if (el('volSlider')) el('volSlider').value = String(lvl);
+  if (el('settingsVolSlider')) el('settingsVolSlider').value = String(lvl);
+  if (el('volPercentLabel')) el('volPercentLabel').textContent = currentVolMuted ? 'Sessiz' : `${lvl}%`;
+  el('volumeBar')?.classList.toggle('muted', currentVolMuted);
+}
+
+async function refreshVolumeState() {
+  try {
+    const v = await request('/api/volume', {action:'get'});
+    syncVolumeUi(v);
+  } catch {}
+}
+
+function setMasterVolumeFast(level) {
+  const clean = Math.max(0, Math.min(100, Math.round(Number(level))));
+  if (el('volPercentLabel')) el('volPercentLabel').textContent = `${clean}%`;
+  if (el('volSlider')) el('volSlider').value = String(clean);
+  if (el('settingsVolSlider')) el('settingsVolSlider').value = String(clean);
+  clearTimeout(volTimer);
+  volTimer = setTimeout(async () => {
+    try {
+      const v = await request('/api/volume', {action:'set', level:clean});
+      syncVolumeUi(v);
+    } catch (error) { toast(error.message); }
+  }, 35);
+}
+
+async function toggleMasterMuteFast() {
+  try {
+    const v = await request('/api/volume', {action:'mute', muted:!currentVolMuted});
+    syncVolumeUi(v);
+    toast(v.muted ? 'Bilgisayar sesi kısıldı (Sessiz).' : `Bilgisayar sesi açıldı (%${v.level}).`);
+  } catch (error) { toast(error.message); }
+}
+
+function renderHardwareAndSetupBanner() {
+  if (!state) return;
+  const hw = state.hardware;
+  const hwBox = el('hardwareRecommendationBox');
+  if (hw && hwBox) {
+    const modelsText = (hw.models || []).map(m => `• ${m.name} (${m.size}) — ${m.why}`).join('\n');
+    hwBox.textContent = `Donanım Profili: ${hw.label} (${hw.ram_gb ?? '?'} GB RAM · ${hw.cores} çekirdek)\n`
+      + `Otomatik Optimize Ayar: Bağlam ${hw.defaults?.context} token · Bekletme ${hw.defaults?.keep_alive}\n`
+      + `İsteğe Bağlı Yerel Ollama Kurulumu İçin Bu Bilgisayara Önerilen Modeller:\n${modelsText}\n`
+      + `(Kurmak istersen terminalde: ollama pull ${(hw.models?.[0]?.name) || 'qwen3:4b'})`;
+  }
+  const prefSel = el('preferredProviderSelect');
+  if (prefSel && state.setup?.provider) {
+    prefSel.value = state.setup.provider;
+  }
+
+  let banner = el('welcomeSetupBanner');
+  if (!banner && el('welcome')) {
+    banner = document.createElement('div');
+    banner.id = 'welcomeSetupBanner';
+    banner.className = 'welcome-setup-banner';
+    el('welcome').appendChild(banner);
+  }
+  if (banner) {
+    banner.replaceChildren();
+    const isGeminiReady = Boolean(state.cloud_model && state.cloud_allowed);
+    const isOllamaReady = installedModels.length > 0;
+    const recModel = hw?.models?.[0]?.name || 'qwen3:4b';
+    const title = document.createElement('strong');
+    title.textContent = isGeminiReady
+      ? `Google Gemini Öncelikli Mod Etkin (${state.cloud_model.replace('models/', '')})`
+      : 'Hızlı Başlangıç — Google Gemini API Öncelikli veya İsteğe Bağlı Yerel Ollama';
+    const desc = document.createElement('div');
+    desc.textContent = isGeminiReady
+      ? 'Sohbetlerin doğrudan Google Gemini ile çalışır; Ollama kurman gerekmez.'
+      : `1) Önerilen: Ollama kurmadan doğrudan Google Gemini API anahtarınla hemen başla.  2) İsteğe bağlı yerel model: Bilgisayarına (${hw?.ram_gb ?? '?'} GB RAM) uygun önerilen model: ${recModel} (${isOllamaReady ? 'Yerel model hazır' : 'Kurulu değil — isteğe bağlı'}).`;
+    const btnRow = document.createElement('div');
+    btnRow.className = 'button-row';
+    btnRow.append(
+      action('Google Gemini API Anahtarı Ayarla (Öncelikli)', () => { showPage('settings'); el('directApiKeyInput')?.focus(); }),
+      action(`Yerel Model Önerilerini Gör (${recModel})`, () => { showPage('settings'); el('hardwareRecommendationBox')?.scrollIntoView({block:'center'}); })
+    );
+    banner.append(title, desc, btnRow);
+  }
+}
+
 function wireV060Modules() {
-  // 1. Clipboard Image Paste (Ctrl+V screenshot directly into chat)
+  // 1. Fast Master Volume Controls
+  el('volSlider')?.addEventListener('input', e => setMasterVolumeFast(e.target.value));
+  el('settingsVolSlider')?.addEventListener('input', e => setMasterVolumeFast(e.target.value));
+  el('volMuteBtn')?.addEventListener('click', toggleMasterMuteFast);
+  el('settingsVolMuteBtn')?.addEventListener('click', toggleMasterMuteFast);
+  setTimeout(refreshVolumeState, 120);
+
+  // 2. Direct in-page Gemini API Key save & Gemini-first provider preference
+  if (el('directKeySaveBtn')) {
+    el('directKeySaveBtn').onclick = async () => {
+      const keyVal = el('directApiKeyInput')?.value.trim() || '';
+      if (!keyVal) return toast('Google Gemini API anahtarını gir.');
+      try {
+        el('directApiKeyInput').value = '';
+        const result = await request('/api/credentials', {action:'set', key:keyVal});
+        await request('/api/setup', {action:'complete', provider:'gemini'});
+        if (result.models?.length) {
+          options(el('cloudModel'), result.models.map(m => [m, m.slice(7)]), result.selected);
+          state.gemini_models_ready = true;
+        }
+        toast(result.models?.length ? 'API anahtarı DPAPI kasasına şifrelendi ve Gemini modelleri hazır!' : 'API anahtarı şifrelenerek kaydedildi.');
+      } catch (error) { toast(error.message); }
+    };
+  }
+  if (el('preferredProviderSelect')) {
+    el('preferredProviderSelect').onchange = async () => {
+      try {
+        const res = await request('/api/setup', {action:'complete', provider:el('preferredProviderSelect').value});
+        renderState(res.state);
+        toast('Varsayılan sağlayıcı önceliği kaydedildi.');
+      } catch (error) { toast(error.message); }
+    };
+  }
+
+  // 3. Clipboard Image Paste (Ctrl+V screenshot directly into chat)
   const msgInput = el('messageInput');
   if (msgInput) {
     msgInput.addEventListener('paste', async evt => {
@@ -38,13 +159,13 @@ function wireV060Modules() {
 
     // Barge-in: stop speech immediately when user starts typing
     msgInput.addEventListener('keydown', () => {
-      if (activeAudioPlayer && typeof stopVoicePlayback === 'function') {
+      if (typeof stopVoicePlayback === 'function') {
         stopVoicePlayback();
       }
     });
   }
 
-  // 2. Live Split-Pane Studio Preview while typing
+  // 4. Live Split-Pane Studio Preview while typing
   const stContent = el('studioContent');
   const stTitle = el('studioTitle');
   let studioDebounce = 0;
@@ -59,7 +180,7 @@ function wireV060Modules() {
   stContent?.addEventListener('input', triggerLiveStudioPreview);
   stTitle?.addEventListener('input', triggerLiveStudioPreview);
 
-  // 3. Offline Kill-Switch & Desktop Shortcut buttons in Command Center
+  // 5. Offline Kill-Switch & Desktop Shortcut buttons in Command Center
   const killBtn = el('ccOfflineKillSwitchBtn');
   if (killBtn) {
     killBtn.onclick = async () => {
@@ -82,6 +203,14 @@ function wireV060Modules() {
       } catch (error) { toast(error.message); }
     };
   }
+}
+
+const _origRenderStateV061 = typeof renderState === 'function' ? renderState : null;
+if (_origRenderStateV061) {
+  window.renderState = function (next) {
+    _origRenderStateV061(next);
+    renderHardwareAndSetupBanner();
+  };
 }
 
 // Enhance renderVisionBar to include offline Windows OCR button on attached images

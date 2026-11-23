@@ -96,7 +96,7 @@ def shortcut_search_directories(environ=None) -> list[Path]:
 
 class ApplicationRegistry:
     def __init__(self, config_path: Path | None = None, *, platform: str | None = None,
-                 start_process: Callable[..., object] | None = None):
+                 start_process: Callable[..., object] | None = None, lazy_refresh: bool = False):
         self.config_path = config_path or storage_path()
         self.platform = platform or sys.platform
         self._start_process = start_process or subprocess.Popen
@@ -105,8 +105,10 @@ class ApplicationRegistry:
         self._custom = self._load()
         self._discovered: dict[str, str] = {}
         self._native_icons = {}
-        if self.platform == "win32":
+        self._refreshed = False
+        if self.platform == "win32" and not lazy_refresh:
             self.refresh()
+            self._refreshed = True
 
     def _load(self) -> dict[str, dict[str, str]]:
         try:
@@ -142,8 +144,14 @@ class ApplicationRegistry:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
 
+    def _ensure_refreshed(self) -> None:
+        if not self._refreshed and self.platform == "win32":
+            self._refreshed = True
+            self.refresh()
+
     def refresh(self) -> None:
         """Look for registered application executables and Start Menu shortcuts."""
+        self._refreshed = True
         discovered: dict[str, str] = {}
         if self.platform != "win32":
             self._discovered = discovered
@@ -239,6 +247,7 @@ class ApplicationRegistry:
             self._persist()
 
     def list_apps(self) -> list[dict]:
+        self._ensure_refreshed()
         with self._lock:
             items = []
             for key, spec in PRESETS.items():
@@ -286,6 +295,7 @@ class ApplicationRegistry:
         """Launch only an explicitly selected entry; never a freeform chat instruction."""
         if self.platform != "win32":
             raise LaunchError("Uygulama başlatma yalnız Windows'ta kullanılabilir.")
+        self._ensure_refreshed()
         with self._lock:
             if app_id in self._custom:
                 path = self._custom[app_id]["path"]
@@ -329,23 +339,21 @@ def shortcut_executable(path):
 
 
 def choose_executable() -> str:
-    """Show local Windows-native file picker on a direct user request."""
+    """Show the native Windows file picker on a direct user request (PowerShell, so tkinter is not required)."""
     if sys.platform != "win32":
         raise LaunchError("Dosya seçici yalnız Windows'ta kullanılabilir.")
+    exe = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32/WindowsPowerShell/v1.0/powershell.exe"
+    script = ("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false);"
+              "Add-Type -AssemblyName System.Windows.Forms;"
+              "$d=New-Object System.Windows.Forms.OpenFileDialog;"
+              "$d.Title='Acilacak uygulamayi sec';$d.Filter='Uygulamalar (*.exe;*.lnk)|*.exe;*.lnk|Tum dosyalar|*.*';"
+              "$f=New-Object System.Windows.Forms.Form;$f.TopMost=$true;"
+              "if($d.ShowDialog($f) -eq 'OK'){Write-Output $d.FileName}")
     try:
-        import tkinter as tk
-        from tkinter import filedialog
-        root = tk.Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
-        try:
-            path = filedialog.askopenfilename(
-                parent=root,
-                title="Açılacak uygulamayı seç",
-                filetypes=[("Uygulamalar", "*.exe *.lnk"), ("Tüm dosyalar", "*.*")],
-            )
-        finally:
-            root.destroy()
-        return safe_launch_path(path) if path else ""
-    except (OSError, ImportError) as exc:
+        result = subprocess.run([str(exe), "-NoProfile", "-NonInteractive", "-STA", "-Command", script],
+                                capture_output=True, text=True, encoding="utf-8", timeout=300,
+                                creationflags=subprocess.CREATE_NO_WINDOW)
+    except (OSError, subprocess.SubprocessError):
         raise LaunchError("Windows dosya seçicisi açılamadı.") from None
+    path = result.stdout.strip()
+    return safe_launch_path(path) if path else ""

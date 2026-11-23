@@ -54,15 +54,14 @@ class Release060Tests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Offline Kill-Switch"):
             self.s.weather_report(True)
 
-        # 4. Neural TTS must automatically fall back to local offline engine without calling external socket
-        with patch("eon.productivity.synthesize_edge_neural_mp3", side_effect=AssertionError("Should not call network")):
-            res = self.s.voice_action({"action": "speak", "text": "Çevrimdışı ses testi"})
-            self.assertTrue(res["supported"])
-            self.assertNotEqual(res.get("engine"), "neural_hd")
+        # 4. Local voice engine works completely offline without external network calls
+        res = self.s.voice_action({"action": "speak", "text": "Çevrimdışı ses testi"})
+        self.assertTrue(res["supported"])
+        self.assertEqual(res.get("engine"), "browser_natural")
 
         # 5. Network Inspector log records blocked attempts
         status = self.s.runtime_action("status")
-        self.assertTrue(len(status["network_log"]) >= 4)
+        self.assertTrue(len(status["network_log"]) >= 3)
         self.assertTrue(any("BLOCKED" in entry["status"] for entry in status["network_log"]))
 
         # Disable Offline Kill-Switch
@@ -144,15 +143,49 @@ class Release060Tests(unittest.TestCase):
             svc = EonService(provider_factory=FakeProvider, launcher=Mock(), vault_path=path)
             try:
                 svc.send("Birinci kayıt")
+                svc.vault.rotate_backups(3, min_interval=0)
                 svc.send("İkinci kayıt")
+                svc.vault.rotate_backups(3, min_interval=0)
                 svc.send("Üçüncü kayıt")
-                svc.send("Dördüncü kayıt")
+                svc.vault.rotate_backups(3, min_interval=0)
                 self.assertTrue(path.with_suffix(".bak1.dpapi").exists())
                 self.assertTrue(path.with_suffix(".bak2.dpapi").exists())
                 self.assertTrue(path.with_suffix(".bak3.dpapi").exists())
             finally:
                 if svc.vault:
                     svc.vault.close()
+
+    def test_hardware_auto_tuning_gemini_first_setup_and_volume_control(self):
+        from eon import audio, hardware
+        # 1. Hardware tiers (low / balanced / high)
+        low_p = hardware.detect(ram_bytes=4 * 1073741824, cores=2)
+        self.assertEqual(low_p["tier"], "low")
+        self.assertEqual(low_p["defaults"]["context"], 2048)
+        self.assertEqual(low_p["defaults"]["keep_alive"], "0")
+
+        bal_p = hardware.detect(ram_bytes=16 * 1073741824, cores=8)
+        self.assertEqual(bal_p["tier"], "balanced")
+        self.assertTrue(any(m["name"] == "qwen3:8b" for m in bal_p["models"]))
+
+        high_p = hardware.detect(ram_bytes=32 * 1073741824, cores=16)
+        self.assertEqual(high_p["tier"], "high")
+        self.assertEqual(high_p["defaults"]["context"], 8192)
+
+        # 2. Gemini-first setup flow & direct DPAPI key entry
+        hw_info = self.s.setup_action({"action": "hardware"})
+        self.assertIn("hardware", hw_info)
+        self.s.setup_action({"action": "complete", "provider": "gemini"})
+        self.assertEqual(self.s.snapshot()["setup"], {"provider": "gemini", "done": True})
+
+        # 3. Fast in-process Windows Core Audio volume validation
+        with self.assertRaises(ValueError):
+            self.s.volume_action({"action": "set", "level": 150})
+        with self.assertRaises(ValueError):
+            self.s.volume_action({"action": "mute", "muted": "invalid"})
+        if os.name == "nt":
+            st = self.s.volume_action({"action": "get"})
+            self.assertTrue(st["supported"])
+            self.assertTrue(0 <= st["level"] <= 100)
 
 
 if __name__ == "__main__":

@@ -26,7 +26,10 @@ def secret(path, value=None):
 
 
 def enter(path):
-    from tkinter import Tk, simpledialog, messagebox
+    try:
+        from tkinter import Tk, simpledialog, messagebox
+    except ImportError:
+        raise SystemExit(1)
     window = Tk()
     window.withdraw()
     try:

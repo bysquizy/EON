@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import time
 
 
 class Blob(ctypes.Structure):
@@ -67,9 +68,15 @@ class Vault:
         finally:
             Path(temp).unlink(missing_ok=True)
 
-    def rotate_backups(self, keep: int = 3) -> None:
+    def rotate_backups(self, keep: int = 3, min_interval: float = 0) -> None:
         if not self.path.exists() or keep < 1:
             return
+        newest = self.path.with_suffix(".bak1.dpapi")
+        try:
+            if min_interval and newest.exists() and time.time() - newest.stat().st_mtime < min_interval:
+                return
+        except OSError:
+            pass
         try:
             raw = self.path.read_bytes()
             for idx in range(keep, 1, -1):

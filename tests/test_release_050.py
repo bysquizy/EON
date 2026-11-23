@@ -336,7 +336,7 @@ class Release050Tests(unittest.TestCase):
     def test_command_center_health_and_privacy_redacted_metrics(self):
         self.s.send("Gizli kullanıcı sorusu SECRET_PROMPT_999")
         status = self.s.runtime_action("status")
-        self.assertEqual(status["version"], "0.6.0")
+        self.assertEqual(status["version"], "0.6.1")
         self.assertIn("system_memory", status)
         # Request log must NEVER contain prompt or assistant text
         log_dump = json.dumps(status["request_log"])
@@ -344,26 +344,21 @@ class Release050Tests(unittest.TestCase):
         self.assertNotIn("EON yanıtı", log_dump)
 
     def test_built_in_natural_neural_voice_engine_and_prosody_cleaner(self):
-        from eon.productivity import build_natural_ssml, clean_speech_text
+        from eon.productivity import clean_speech_text
         cleaned = clean_speech_text("# Başlık\nMerhaba **dünya**! ```python\nprint(1)\n``` [Link](https://example.com)")
         self.assertNotIn("**", cleaned)
         self.assertNotIn("https://", cleaned)
         self.assertIn("Merhaba dünya!", cleaned)
-
-        ssml = build_natural_ssml("Doğal ses testi.", voice="tr-TR-EmelNeural", rate="+2%", pitch="+0Hz")
-        self.assertIn("tr-TR-EmelNeural", ssml)
-        self.assertIn("prosody rate='+2%'", ssml)
 
         cfg = self.s.voice_action({"action": "configure", "voice": "tr-TR-EmelNeural"})
         self.assertEqual(cfg["voice_state"]["selected"], "tr-TR-EmelNeural")
         with self.assertRaises(ValueError):
             self.s.voice_action({"action": "configure", "voice": "invalid-voice"})
 
-        with patch("eon.productivity.synthesize_edge_neural_mp3", return_value=b"ID3-synthetic-mp3-audio"):
-            spoken = self.s.voice_action({"action": "speak", "text": "Merhaba EON doğal ses!", "voice": "tr-TR-EmelNeural"})
-            self.assertEqual(spoken["engine"], "neural_hd")
-            self.assertEqual(spoken["voice"], "tr-TR-EmelNeural")
-            self.assertEqual(base64.b64decode(spoken["audio_base64"]), b"ID3-synthetic-mp3-audio")
+        spoken = self.s.voice_action({"action": "speak", "text": "Merhaba EON doğal ses!", "voice": "tr-TR-EmelNeural"})
+        self.assertEqual(spoken["engine"], "browser_natural")
+        self.assertEqual(spoken["voice"], "tr-TR-EmelNeural")
+        self.assertIn("Merhaba EON doğal ses!", spoken["cleaned_text"])
 
     @unittest.skipUnless(os.name == "nt", "Windows DPAPI")
     def test_v041_vault_migration_creates_pre_v050_backup(self):

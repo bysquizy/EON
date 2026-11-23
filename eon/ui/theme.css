@@ -85,6 +85,11 @@ dialog{border-radius:18px;box-shadow:0 30px 90px rgba(0,0,0,.5)}dialog::backdrop
 .citation-modal-text { max-height:46dvh; overflow:auto; padding:12px; background:#050b17; border:1px solid var(--line); border-radius:10px; white-space:pre-wrap; font-size:13px; line-height:1.6; }
 .inline-action-card { margin:8px 0 4px 46px; max-width:560px; }
 .chat-page.drag-active { outline:2px dashed var(--accent); outline-offset:-12px; background:color-mix(in srgb,var(--accent) 8%,transparent); }
+.volume-bar { display:inline-flex; align-items:center; gap:8px; padding:4px 12px; border-radius:99px; background:rgba(15,24,52,.65); border:1px solid var(--line); font-size:12px; color:var(--soft); }
+.volume-bar input[type=range] { width:78px; accent-color:var(--accent); cursor:pointer; }
+.volume-bar.muted { border-color:#f0b35c; color:#f0b35c; }
+.welcome-setup-banner { pointer-events:auto; margin-top:20px; padding:14px 20px; max-width:680px; border-radius:16px; background:var(--glass); border:1px solid var(--line-strong); font-size:13px; color:var(--soft); text-align:left; line-height:1.6; }
+@media(max-width:780px) { .volume-bar input[type=range] { width:52px; } }
 .voice-badge { color:#f59e0b; font-weight:500; cursor:pointer; margin:0 10px; }
 .button-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
 .checklist-box, .subtle-box { max-height:190px; overflow-y:auto; padding:10px 12px; margin:8px 0; border-radius:10px; background:rgba(7,12,28,.55); border:1px solid var(--line); font-size:13px; color:var(--soft); white-space:pre-wrap; overflow-wrap:anywhere; }

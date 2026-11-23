@@ -1,31 +1,97 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-if /I "%~1"=="--silent" goto silent
-if /I "%~1"=="--tray" goto tray
+set "EON_MODE=%~1"
+
+:: 1. Yerel taşınabilir Python (.python\python.exe) varsa doğrudan onu kullan
+if exist "%~dp0.python\python.exe" (
+  set "PY_CMD=%~dp0.python\python.exe"
+  set "PYW_CMD=%~dp0.python\pythonw.exe"
+  goto dispatch
+)
+
+:: 2. Sistemde kurulu Python Başlatıcısı (py.exe) var mı?
 where.exe py >nul 2>&1
-if errorlevel 1 goto use_python
-py -3 eon.py
-goto finish
-:use_python
+if not errorlevel 1 (
+  py -3 -c "import sys;raise SystemExit(0 if sys.version_info>=(3,10) else 1)" >nul 2>&1
+  if not errorlevel 1 (
+    set "PY_CMD=py -3"
+    set "PYW_CMD=pyw -3"
+    goto dispatch
+  )
+)
+
+:: 3. Sistemde gerçek python.exe (Windows Store sahte kısayolu olmayan) var mı?
 where.exe python >nul 2>&1
-if errorlevel 1 goto missing_python
-python eon.py
+if not errorlevel 1 (
+  python -c "import sys;raise SystemExit(0 if sys.version_info>=(3,10) else 1)" >nul 2>&1
+  if not errorlevel 1 (
+    set "PY_CMD=python"
+    set "PYW_CMD=pythonw"
+    goto dispatch
+  )
+)
+
+:: 4. Bilgisayarda Python kurulu değil: Resmi python.org Taşınabilir (Embeddable) Python'ı otomatik indir ve hazırla
+echo Bilgisayarda Python bulunamadi.
+echo EON, resmi python.org tasinabilir (portable) calisma ortamini (.python klasorune) indirip hazirliyor...
+powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ^
+  "$ErrorActionPreference='Stop';" ^
+  "$ProgressPreference='SilentlyContinue';" ^
+  "$arch=if($env:PROCESSOR_ARCHITECTURE -eq 'ARM64'){'arm64'}else{'amd64'};" ^
+  "$ver='3.13.2';" ^
+  "$url=\"https://www.python.org/ftp/python/$ver/python-$ver-embed-$arch.zip\";" ^
+  "$dest=Join-Path '%~dp0' '.python';" ^
+  "$zip=Join-Path '%~dp0' '.python-embed.zip';" ^
+  "New-Item -ItemType Directory -Force $dest|Out-Null;" ^
+  "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13;" ^
+  "Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip;" ^
+  "Expand-Archive -Force -Path $zip -DestinationPath $dest;" ^
+  "Remove-Item -Force $zip;" ^
+  "Get-ChildItem -Path $dest -Filter 'python*._pth'|ForEach-Object{" ^
+  "  $c=(Get-Content $_.FullName) -replace '#import site','import site';" ^
+  "  if($c -notcontains '..'){$c+=@('..')};" ^
+  "  Set-Content -Encoding ASCII $_.FullName $c" ^
+  "}"
+if exist "%~dp0.python\python.exe" (
+  set "PY_CMD=%~dp0.python\python.exe"
+  set "PYW_CMD=%~dp0.python\pythonw.exe"
+  goto dispatch
+)
+
+echo Tasinabilir Python indirilemedi. Internet baglantinizi kontrol edin veya https://www.python.org adresinden Python 3.10+ kurun.
+pause
+exit /b 1
+
+:dispatch
+if /I "%EON_MODE%"=="--silent" goto launch_silent
+if /I "%EON_MODE%"=="--tray" goto launch_tray
+%PY_CMD% eon.py
 goto finish
-:silent
-where.exe pyw >nul 2>&1
-if not errorlevel 1 goto launch_silent
-where.exe pythonw >nul 2>&1
-if not errorlevel 1 goto launch_pythonw
-echo Sessiz başlatma için pyw veya pythonw bulunamadı; normal modda açılıyor.
-goto normal
+
 :launch_silent
-pyw -3 eon.py --silent
+if exist "%~dp0.python\pythonw.exe" (
+  "%~dp0.python\pythonw.exe" eon.py --silent
+  goto finish
+)
+where.exe pyw >nul 2>&1
+if not errorlevel 1 (
+  pyw -3 eon.py --silent
+  goto finish
+)
+where.exe pythonw >nul 2>&1
+if not errorlevel 1 (
+  pythonw eon.py --silent
+  goto finish
+)
+%PY_CMD% eon.py
 goto finish
-:launch_pythonw
-pythonw eon.py --silent
-goto finish
-:tray
+
+:launch_tray
+if exist "%~dp0.python\pythonw.exe" (
+  "%~dp0.python\pythonw.exe" eon.py --tray
+  goto finish
+)
 where.exe pyw >nul 2>&1
 if not errorlevel 1 (
   pyw -3 eon.py --tray
@@ -36,17 +102,8 @@ if not errorlevel 1 (
   pythonw eon.py --tray
   goto finish
 )
-py -3 eon.py --tray
+%PY_CMD% eon.py --tray
 goto finish
-:normal
-where.exe py >nul 2>&1
-if errorlevel 1 goto use_python
-py -3 eon.py
-goto finish
-:missing_python
-echo Python bulunamadı. EON için Python 3.10 veya üzeri gereklidir.
-echo Python'ı kurup bu pencereyi yeniden açın.
-pause
-exit /b 1
+
 :finish
 if errorlevel 1 pause

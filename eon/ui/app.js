@@ -657,9 +657,11 @@ async function initialize() {
     renderApps();
     installedModels = boot.models.models || [];
     for (const id of ['modelSelect','settingsModelSelect']) modelOptions(el(id), installedModels, boot.models.selected);
-    el('connection').classList.toggle('connected', Boolean(boot.models.connected && installedModels.length));
+    el('connection').classList.toggle('connected', Boolean(state.cloud_model || (boot.models.connected && installedModels.length)));
     setConnectionLost(false);
-    el('connectionText').textContent = !boot.models.connected ? 'Ollama bağlantısı yok' : installedModels.length ? 'Yerel model hazır' : 'Yerel model bulunamadı';
+    el('connectionText').textContent = state.cloud_model ? 'Gemini hazır' : 'EON hazır';
+    // Non-blocking background discovery of local Ollama models so UI startup is instant
+    setTimeout(() => { loadModels().catch(() => {}); }, 80);
   } catch (error) { toast('EON yerel sunucusu hazır değil: ' + error.message); }
 }
 initialize();

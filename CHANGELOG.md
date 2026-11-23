@@ -1,5 +1,13 @@
 # Değişiklikler
 
+## v0.6.1
+
+- **Otomatik Donanım Optimizasyonu & Anında Açılış:** RAM ve CPU çekirdek sayısına göre otomatik bağlam/bellek optimizasyonu (`eon/hardware.py`), tembel (lazy) uygulama keşfi ve engelsiz `/api/bootstrap` açılışı.
+- **Google Gemini Öncelikli Akış & Yerel Model Önerileri:** Ollama kurmadan doğrudan arayüz içi DPAPI şifreli Gemini API anahtarı kurulumu, Gemini öncelikli yeni sohbet açılışı ve bilgisayara özel yerel Ollama model önerileri.
+- **Anlık Bilgisayar Sesi Denetimi (`eon/audio.py`):** Windows Core Audio COM (`ctypes`) ile üst çubuktan ve Ayarlar'dan milisaniyeler içinde bilgisayarın sesini kısma/açma.
+- **Python Gerektirmeyen Hızlı Başlatıcı (`baslat.bat`):** Sistemde Python yoksa resmi taşınabilir (embeddable) Python paketini `.python\` altına otomatik kurup başlatma.
+- **Açık Kaynak Gizlilik Sertleştirmesi:** Sıfır kişisel veri, tamamen yerel ses sentezi, COOP/CSP sertleştirmesi.
+
 ## v0.6.0
 
 - **Çok Adımlı Ajan Planlama & Prompt Injection Kalkanı:** Sohbet içi çok adımlı klasör/dosya eylem planı kartı, belge içi dolaylı prompt injection filtrelemesi ve denetim kaydı.

@@ -111,177 +111,35 @@ def system_memory_info() -> dict:
 
 
 NATURAL_VOICES = {
-    "tr-TR-AhmetNeural": {"name": "Ahmet — Doğal Erkek (Neural HD)", "lang": "tr-TR", "gender": "Male"},
-    "tr-TR-EmelNeural": {"name": "Emel — Doğal Kadın (Neural HD)", "lang": "tr-TR", "gender": "Female"},
-    "en-US-AndrewMultilingualNeural": {"name": "Andrew — Çok Dilli Doğal Erkek (Neural HD)", "lang": "en-US", "gender": "Male"},
-    "en-US-AvaMultilingualNeural": {"name": "Ava — Çok Dilli Doğal Kadın (Neural HD)", "lang": "en-US", "gender": "Female"},
+    "tr-TR-AhmetNeural": {"name": "Ahmet — Türkçe erkek", "lang": "tr-TR", "gender": "Male"},
+    "tr-TR-EmelNeural": {"name": "Emel — Türkçe kadın", "lang": "tr-TR", "gender": "Female"},
+    "en-US-AndrewMultilingualNeural": {"name": "Andrew — İngilizce erkek", "lang": "en-US", "gender": "Male"},
+    "en-US-AvaMultilingualNeural": {"name": "Ava — İngilizce kadın", "lang": "en-US", "gender": "Female"},
 }
 DEFAULT_NEURAL_VOICE = "tr-TR-AhmetNeural"
 
 
 def clean_speech_text(text: str) -> str:
-    """Strip Markdown syntax and normalize punctuation for human-like prosody and breathing."""
+    """Strip Markdown syntax so the voice reads natural sentences."""
     if not isinstance(text, str):
         return ""
     s = re.sub(r"```[\s\S]*?```", " Kod bloğu. ", text)
     s = re.sub(r"`([^`]+)`", r"\1", s)
     s = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", s)
-    s = re.sub(r"^[#>*\-+]+\s*", "", s, flags=re.MULTILINE)
     s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
     s = re.sub(r"\*([^*]+)\*", r"\1", s)
+    s = re.sub(r"^[#>*\-+]+\s*", "", s, flags=re.MULTILINE)
     s = re.sub(r"\|", ", ", s)
     s = re.sub(r"\s+", " ", s).strip()
     return s[:1800]
 
 
-def build_natural_ssml(text: str, voice: str = DEFAULT_NEURAL_VOICE, rate: str = "+2%", pitch: str = "+0Hz") -> str:
-    import xml.sax.saxutils as sax
-    v_info = NATURAL_VOICES.get(voice, NATURAL_VOICES[DEFAULT_NEURAL_VOICE])
-    voice_name = voice if voice in NATURAL_VOICES else DEFAULT_NEURAL_VOICE
-    if not re.fullmatch(r"[+-]?\d{1,2}%", str(rate)):
-        rate = "+2%"
-    if not re.fullmatch(r"[+-]?\d{1,2}Hz", str(pitch)):
-        pitch = "+0Hz"
-    escaped = sax.escape(clean_speech_text(text))
-    return (
-        f"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='{v_info['lang']}'>"
-        f"<voice name='{voice_name}'>"
-        f"<prosody rate='{rate}' pitch='{pitch}'>{escaped}</prosody>"
-        f"</voice></speak>"
-    )
-
-
-def synthesize_edge_neural_mp3(text: str, voice: str = DEFAULT_NEURAL_VOICE,
-                               rate: str = "+2%", pitch: str = "+0Hz", timeout: float = 8.0) -> bytes:
-    """Built-in zero-dependency WebSocket client for Microsoft Edge Neural TTS (24kHz MP3)."""
-    import hashlib
-    import ssl
-    import socket
-    from datetime import datetime, timezone
-
-    trusted_Token = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"
-    # Generate Sec-MS-GEC token (Windows filetime ticks rounded to 5 minutes)
-    ticks = int((time.time() + 11644473600) // 300 * 300 * 10000000)
-    gec = hashlib.sha256(f"{ticks}{trusted_Token}".encode("ascii")).hexdigest().upper()
-    conn_id = secrets.token_hex(16)
-    host = "speech.platform.bing.com"
-    path = (
-        f"/consumer/speech/synthesize/readaloud/edge/v1"
-        f"?TrustedClientToken={trusted_Token}&Sec-MS-GEC={gec}&Sec-MS-GEC-Version=1-130.0.2849.68&ConnectionId={conn_id}"
-    )
-
-    ws_key = base64.b64encode(secrets.token_bytes(16)).decode("ascii")
-    ctx = ssl.create_default_context()
-    raw_sock = socket.create_connection((host, 443), timeout=timeout)
-    sock = ctx.wrap_socket(raw_sock, server_hostname=host)
-    try:
-        handshake = (
-            f"GET {path} HTTP/1.1\r\n"
-            f"Host: {host}\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {ws_key}\r\n"
-            "Sec-WebSocket-Version: 13\r\n"
-            "Origin: chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold\r\n"
-            "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0\r\n\r\n"
-        )
-        sock.sendall(handshake.encode("utf-8"))
-        resp_head = b""
-        while b"\r\n\r\n" not in resp_head:
-            chunk = sock.recv(1024)
-            if not chunk:
-                raise OSError("WebSocket el sıkışması tamamlanamadı.")
-            resp_head += chunk
-        if not resp_head.startswith(b"HTTP/1.1 101"):
-            raise OSError("Neural TTS sunucusu bağlantıyı kabul etmedi.")
-        leftover = resp_head.split(b"\r\n\r\n", 1)[1]
-
-        def send_ws_text(payload_str: str) -> None:
-            data = payload_str.encode("utf-8")
-            mask_key = secrets.token_bytes(4)
-            header = bytearray([0x81])  # FIN + Text frame
-            n = len(data)
-            if n < 126:
-                header.append(0x80 | n)
-            elif n < 65536:
-                header.append(0x80 | 126)
-                header.extend(struct.pack(">H", n))
-            else:
-                header.append(0x80 | 127)
-                header.extend(struct.pack(">Q", n))
-            header.extend(mask_key)
-            masked = bytes(b ^ mask_key[i % 4] for i, b in enumerate(data))
-            sock.sendall(bytes(header) + masked)
-
-        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-        cfg_msg = (
-            f"X-Timestamp:{now_iso}\r\n"
-            "Content-Type:application/json; charset=utf-8\r\n"
-            "Path:speech.config\r\n\r\n"
-            '{"context":{"synthesis":{"audio":{"metadataoptions":{"sentenceBoundaryEnabled":"false","wordBoundaryEnabled":"false"},'
-            '"outputFormat":"audio-24khz-48kbitrate-mono-mp3"}}}}'
-        )
-        send_ws_text(cfg_msg)
-
-        req_id = secrets.token_hex(16)
-        ssml = build_natural_ssml(text, voice=voice, rate=rate, pitch=pitch)
-        ssml_msg = (
-            f"X-RequestId:{req_id}\r\n"
-            "Content-Type:application/ssml+xml\r\n"
-            f"X-Timestamp:{now_iso}\r\n"
-            "Path:ssml\r\n\r\n"
-            + ssml
-        )
-        send_ws_text(ssml_msg)
-
-        buf = bytearray(leftover)
-
-        def read_exact(count: int) -> bytes:
-            while len(buf) < count:
-                part = sock.recv(8192)
-                if not part:
-                    raise OSError("Ses akışı beklenmedik biçimde kapandı.")
-                buf.extend(part)
-            out = bytes(buf[:count])
-            del buf[:count]
-            return out
-
-        audio_out = bytearray()
-        while True:
-            b0, b1 = read_exact(2)
-            opcode = b0 & 0x0F
-            masked_flag = (b1 & 0x80) != 0
-            length = b1 & 0x7F
-            if length == 126:
-                length = struct.unpack(">H", read_exact(2))[0]
-            elif length == 127:
-                length = struct.unpack(">Q", read_exact(8))[0]
-            mask_bytes = read_exact(4) if masked_flag else b""
-            frame_data = read_exact(length)
-            if masked_flag:
-                frame_data = bytes(b ^ mask_bytes[i % 4] for i, b in enumerate(frame_data))
-            if opcode == 0x1:  # Text frame
-                if b"Path:turn.end" in frame_data:
-                    break
-            elif opcode == 0x2:  # Binary frame (header len in first 2 bytes + headers + audio)
-                if len(frame_data) > 2:
-                    hdr_len = struct.unpack(">H", frame_data[:2])[0]
-                    if b"Path:audio" in frame_data[2:2 + hdr_len]:
-                        audio_out.extend(frame_data[2 + hdr_len:])
-            elif opcode == 0x8:  # Close
-                break
-        if not audio_out:
-            raise OSError("Boş ses yanıtı.")
-        return bytes(audio_out)
-    finally:
-        try:
-            sock.close()
-        except OSError:
-            pass
-
-
 class VoiceEngine:
-    """Built-in Natural Neural Voice Engine (EmelNeural / AhmetNeural) with local Windows fallback."""
+    """Speech output that never sends text to a third party.
+
+    Preferred path: the app window's own speechSynthesis voices (Edge ships free "Natural" voices locally).
+    Fallback path: Windows System.Speech (SAPI) started on demand, stoppable with one click.
+    """
 
     def __init__(self):
         self._lock = threading.Lock()
@@ -300,12 +158,11 @@ class VoiceEngine:
             "auto_speak": self.auto_speak,
         }
 
-    def configure(self, *, voice: str | None = None, rate: str | None = None,
-                  pitch: str | None = None, auto_speak: bool | None = None) -> dict:
+    def configure(self, *, voice=None, rate=None, pitch=None, auto_speak=None) -> dict:
         with self._lock:
             if voice is not None:
                 if voice not in NATURAL_VOICES:
-                    raise ValueError("Desteklenmeyen doğal ses profili.")
+                    raise ValueError("Desteklenmeyen ses profili.")
                 self.voice = voice
             if rate is not None and re.fullmatch(r"[+-]?\d{1,2}%", str(rate)):
                 self.rate = str(rate)
@@ -315,64 +172,38 @@ class VoiceEngine:
                 self.auto_speak = auto_speak
             return self.voices()
 
-    def speak(self, text: str, *, voice: str | None = None, allow_neural: bool = True) -> dict:
+    def speak(self, text: str, *, voice: str | None = None, engine: str = "browser") -> dict:
         cleaned = clean_speech_text(text)
         if not cleaned:
             raise ValueError("Seslendirilecek metin boş.")
         self.stop()
-        chosen_voice = voice if voice in NATURAL_VOICES else self.voice
-
-        # 1. Try built-in Neural HD synthesis first (returns inline MP3 for crystal-clear WebAudio playback)
-        if allow_neural:
-            try:
-                mp3_bytes = synthesize_edge_neural_mp3(cleaned, voice=chosen_voice, rate=self.rate, pitch=self.pitch)
-                return {
-                    "supported": True,
-                    "speaking": True,
-                    "engine": "neural_hd",
-                    "voice": chosen_voice,
-                    "mime": "audio/mpeg",
-                    "audio_base64": base64.b64encode(mp3_bytes).decode("ascii"),
-                }
-            except Exception:
-                pass
-
-        # 2. Offline fallback: Windows SAPI / OneCore with prosody-cleaned text
-        if sys.platform != "win32":
-            return {
-                "supported": True,
-                "speaking": True,
-                "engine": "browser_natural",
-                "voice": chosen_voice,
-                "cleaned_text": cleaned,
-            }
+        chosen = voice if voice in NATURAL_VOICES else self.voice
+        if engine != "sapi" or sys.platform != "win32":
+            return {"supported": True, "speaking": True, "engine": "browser_natural", "voice": chosen, "cleaned_text": cleaned}
         exe = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
         if not os.path.isfile(exe):
-            return {"supported": True, "speaking": True, "engine": "browser_natural", "voice": chosen_voice, "cleaned_text": cleaned}
+            return {"supported": False, "notice": "Yerel Windows ses motoru bulunamadı."}
         script = (
             "[Console]::InputEncoding=[Text.UTF8Encoding]::new($false);"
             "$t=[Console]::In.ReadToEnd();"
             "Add-Type -AssemblyName System.Speech;"
             "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer;"
-            "$s.Rate=1;"
             "$s.Speak($t)"
         )
         with self._lock:
             try:
                 proc = subprocess.Popen(
                     [exe, "-NoProfile", "-NonInteractive", "-Command", script],
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
                 assert proc.stdin is not None
                 proc.stdin.write(cleaned.encode("utf-8"))
                 proc.stdin.close()
                 self._proc = proc
-                return {"supported": True, "speaking": True, "engine": "windows_sapi", "voice": chosen_voice, "cleaned_text": cleaned}
+                return {"supported": True, "speaking": True, "engine": "windows_sapi", "voice": chosen}
             except OSError:
-                return {"supported": True, "speaking": True, "engine": "browser_natural", "voice": chosen_voice, "cleaned_text": cleaned}
+                return {"supported": False, "notice": "Yerel Windows ses motoru başlatılamadı."}
 
     def stop(self) -> dict:
         with self._lock:

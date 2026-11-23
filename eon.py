@@ -1,4 +1,4 @@
-"""EON v0.6.0 — local desktop-style interface, or optional terminal mode."""
+"""EON v0.6.1 — local desktop-style interface, or optional terminal mode."""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,7 @@ import webbrowser
 
 
 def run_cli(service: EonService) -> int:
-    print("EON v0.6.0 — Yerel CLI · /yardim ile komutları gör")
+    print("EON v0.6.1 — Yerel CLI · /yardim ile komutları gör")
     while True:
         try:
             text = input("Sen > ").strip()
@@ -58,7 +58,7 @@ def start_tray_controller(url: str, service: EonService, server) -> object | Non
         "Add-Type -AssemblyName System.Windows.Forms,System.Drawing;"
         "$n=New-Object System.Windows.Forms.NotifyIcon;"
         "$n.Icon=[System.Drawing.SystemIcons]::Application;"
-        "$n.Text='EON v0.6.0 — Kisisel AI Calisma Ortami';"
+        "$n.Text='EON v0.6.1 — Kisisel AI Calisma Ortami';"
         "$n.Visible=$true;"
         "$m=New-Object System.Windows.Forms.ContextMenuStrip;"
         "$open=$m.Items.Add('EON Calisma Ortamini Ac');"
@@ -157,7 +157,7 @@ def main() -> int:
         if args.tray:
             tray_proc = start_tray_controller(url, service, server)
         if not args.silent:
-            print("EON v0.6.0 hazır. Yerel adres:", server.origin)
+            print("EON v0.6.1 hazır. Yerel adres:", server.origin)
             print("Oturum anahtarı bağlantı parçasında saklanır ve konsola yazdırılmaz.")
             print("Kapatmak için Ctrl+C. Ollama yalnız yerel model seçilince kullanılır.")
         if not args.no_browser and not open_app_window(url, prefer_app_window=not args.tab) and args.silent:

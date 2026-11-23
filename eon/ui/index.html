@@ -45,8 +45,13 @@
   </svg>
   <div class="window">
     <header class="topbar">
-      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.6.0</span></div>
+      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.6.1</span></div>
       <button id="commandOpen" class="outline-button" aria-haspopup="dialog" title="Komut Merkezi (Ctrl+K)">Komutlar <kbd>Ctrl K</kbd></button>
+      <div class="volume-bar" id="volumeBar" title="Bilgisayar Ses Düzeyi (Windows Core Audio)">
+        <button type="button" id="volMuteBtn" class="icon-button" aria-label="Sesi Kıs / Aç" title="Sesi Kıs / Aç"><svg><use href="#i-volume"/></svg></button>
+        <input type="range" id="volSlider" min="0" max="100" value="50" aria-label="Bilgisayar ses düzeyi">
+        <span id="volPercentLabel">50%</span>
+      </div>
       <div class="ambient"><time id="clock"></time><span id="forecast">Hava durumu kapalı</span></div>
       <div class="top-status" id="connection"><span class="status-dot"></span><span id="connectionText">Bağlanıyor...</span></div>
     </header>
@@ -246,7 +251,7 @@
               <h3>İzinli Çalışma Klasörleri</h3>
               <p>Dosya araçları yalnızca burada izin verdiğin yerel klasörler içinde çalışabilir. Sembolik link, UNC ve çalıştırılabilir uzantılar engellenir.</p>
               <div class="path-row">
-                <input id="allowedFolderInput" class="field" placeholder="C:\Users\Public\Documents\EONCalisma">
+                <input id="allowedFolderInput" class="field" placeholder="C:\Calisma\Belgeler">
                 <button class="outline-button" id="addAllowedFolderBtn" type="button">Ekle</button>
               </div>
               <div id="allowedFoldersList" class="checklist-box"></div>
@@ -382,38 +387,58 @@
         <section class="page content-page" id="view-settings" aria-label="Ayarlar">
           <div class="page-heading"><div><p class="eyebrow">KONTROL</p><h2>Ayarlar</h2><p>EON'u kullanmak istediğin gibi ayarla.</p></div></div>
           <div class="settings-grid">
-            <div class="settings-card"><h3>Çalışma araçları &amp; Doğal Ses (Neural HD)</h3>
+            <div class="settings-card"><h3>Çalışma araçları, Ses &amp; Bilgisayar Sesi</h3>
               <button class="outline-button" id="promptLibrary">Prompt kütüphanesi</button>
               <button class="outline-button" id="focusMode">Odak modu</button>
               <button class="outline-button" id="backupTools">Şifreli yedek</button>
+              <label>Bilgisayar Ses Düzeyi (Anlık Windows Master Ses)
+                <div class="path-row">
+                  <input type="range" id="settingsVolSlider" min="0" max="100" value="50" class="field">
+                  <button class="outline-button" id="settingsVolMuteBtn" type="button">Sesi Kıs / Aç</button>
+                </div>
+              </label>
               <label>Doğal Ses Karakteri (Yerleşik &amp; Sınırsız)
                 <select id="voicePersonaSelect" class="field">
-                  <option value="tr-TR-AhmetNeural">Ahmet — Doğal Erkek (Neural HD)</option>
-                  <option value="tr-TR-EmelNeural">Emel — Doğal Kadın (Neural HD)</option>
-                  <option value="en-US-AndrewMultilingualNeural">Andrew — Çok Dilli Doğal Erkek (Neural HD)</option>
-                  <option value="en-US-AvaMultilingualNeural">Ava — Çok Dilli Doğal Kadın (Neural HD)</option>
+                  <option value="tr-TR-AhmetNeural">Ahmet — Doğal Erkek</option>
+                  <option value="tr-TR-EmelNeural">Emel — Doğal Kadın</option>
+                  <option value="en-US-AndrewMultilingualNeural">Andrew — Çok Dilli Doğal Erkek</option>
+                  <option value="en-US-AvaMultilingualNeural">Ava — Çok Dilli Doğal Kadın</option>
                 </select>
               </label>
               <div class="button-row">
                 <button class="outline-button" id="voiceSampleBtn" type="button">Doğal Sesi Dene</button>
                 <button class="outline-button" id="ttsStopBtn" type="button">Sesi Durdur</button>
               </div>
-              <p class="note-small">Yerleşik Neural HD ses motoru (`24kHz` doğal konuşma) ek kurulum veya ücretli anahtar gerektirmez; çevrimdışı durumda otomatik olarak yerel Windows ses motoruna geçer.</p>
+              <p class="note-small">Yerleşik doğal ses motoru üçüncü taraf sunuculara metin göndermeden yerel çalışır.</p>
             </div>
-            <div class="settings-card"><h3>AI sağlayıcısı</h3>
-              <p>Yeni sohbetler yerel Ollama ile açılır. Gemini için ayrı bir sohbet aç ve aktarımı onayla.</p>
-              <button class="outline-button" id="localNew">Yerel sohbet aç</button>
-              <button class="outline-button" id="keyEnter">Windows’ta anahtar gir</button>
-              <button class="text-button" id="keyDelete">Anahtarı kaldır</button>
-              <button class="outline-button" id="cloudTest">Google bağlantısını test et</button>
+            <div class="settings-card"><h3>AI Sağlayıcısı (Google Gemini Öncelikli &amp; İsteğe Bağlı Ollama)</h3>
+              <p>Google Gemini API anahtarınla Ollama kurmadan hemen başlayabilir veya donanımına uygun önerilen yerel Ollama modellerini kullanabilirsin.</p>
+              <label>Varsayılan Sağlayıcı Önceliği
+                <select id="preferredProviderSelect" class="field">
+                  <option value="gemini">Google Gemini Öncelikli (Önerilen — Ollama Zorunlu Değil)</option>
+                  <option value="ollama">Yerel Ollama Öncelikli</option>
+                </select>
+              </label>
+              <label>Google Gemini API Anahtarı (Windows DPAPI ile Şifrelenir)
+                <div class="path-row">
+                  <input type="password" id="directApiKeyInput" class="field" placeholder="AIzaSy... (Tarayıcıda saklanmaz, doğrudan DPAPI kasasına yazılır)" autocomplete="off">
+                  <button class="primary-button" id="directKeySaveBtn" type="button">Anahtarı Kaydet</button>
+                </div>
+              </label>
+              <div class="button-row">
+                <button class="outline-button" id="cloudNew">Gemini Sohbetini Etkinleştir</button>
+                <button class="outline-button" id="localNew">Yerel Sohbet Aç</button>
+                <button class="outline-button" id="cloudTest">Google Bağlantısını Test Et</button>
+                <button class="text-button" id="keyEnter">Ayrı Pencerede Anahtar Gir</button>
+                <button class="text-button" id="keyDelete">Anahtarı Kaldır</button>
+              </div>
               <select id="cloudModel" aria-label="Google Gemini modeli"></select>
               <label><input type="checkbox" id="shareMemory"> Bu Gemini sohbetine genel hafızayı dahil et</label>
               <label><input type="checkbox" id="sharePrefs"> Genel ve aktif proje yönergelerini Gemini bağlamına ekle</label>
               <button class="text-button" id="cloudSample">Kısa gerçek yanıtı dene</button>
               <button class="text-button" id="compareModels">Örnek soruyla karşılaştır</button><p id="comparison" role="status"></p>
-              <button class="outline-button" id="cloudNew">Gemini sohbetini etkinleştir</button>
               <button class="text-button" id="cloudPrivacyOff" hidden>Bulut paylaşım iznini kapat</button>
-              <p>Test yalnız model listesini ister. Sohbet iletileri Google’a gider. Kota, ücret ve verilerin ürün geliştirmede kullanımı API hesabına ve hizmet katmanına bağlıdır. Google AI Pro, API kotası garantisi vermez.</p>
+              <div id="hardwareRecommendationBox" class="subtle-box"></div>
             </div>
             <div class="settings-card"><h3>Model belleği ve sistem sağlığı</h3>
               <label>Ollama yanıt sonrası <select id="keepAlive"><option value="0">Hemen boşalt</option><option value="1m">1 dakika tut</option><option value="3m">3 dakika tut</option><option value="5m">5 dakika tut</option><option value="15m">15 dakika tut</option></select></label>
