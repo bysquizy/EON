@@ -1,5 +1,12 @@
 # Değişiklikler
 
+## v0.4.0
+
+- Gemini anahtar doğrulaması, model keşfi ve ayrı örnek yanıt testi.
+- Ollama bellek tercihleri, uygulama favorileri ve önbellekli Shell simgeleri.
+- Proje ve sohbet ayarları, şablonlar, odak modu, arama ve geri alma.
+- Parola korumalı yedek ve yerel veri doğrulaması.
+
 ## v0.3.0
 
 - Yeni sohbet kenar çubuğu, kare bazlı akış güncellemesi ve hareket azaltma desteği.

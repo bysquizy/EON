@@ -1,4 +1,4 @@
-/* EON v0.3.0 — same-origin client. No external APIs or analytics. */
+/* EON v0.4.0 — same-origin client. No external APIs or analytics. */
 'use strict';
 const el = id => document.getElementById(id);
 let csrfToken = '';
@@ -12,6 +12,7 @@ if (launchAccess) history.replaceState(null, '', location.pathname);
 let state = null;
 let installedModels = [];
 let apps = [];
+let appsHaveIcons = false;
 let busy = false;
 let editId = '';
 let isCustom = false;
@@ -110,7 +111,12 @@ function showPage(name) {
   document.querySelectorAll('.nav-button').forEach(btn => btn.classList.toggle('selected', btn.dataset.view === name));
   if (name === 'history') renderHistory();
   if (name === 'settings' && state) { renderStats(); fillPreferences(); }
-  if (name === 'apps') renderApps();
+  if (name === 'apps') {
+    renderApps();
+    if (!appsHaveIcons) request('/api/apps').then(result=>{
+      appsHaveIcons=true;apps=result.apps;renderApps();
+    }).catch(error=>toast(error.message));
+  }
   if (name === 'chat') el('messageInput').focus();
 }
 
@@ -119,6 +125,7 @@ function renderState(newState) {
   state = newState;
   renderWorkspace();
   renderHybrid();
+  el("undoChat").hidden = !state.undo_available;
   document.querySelectorAll('.storageStatus').forEach(node => node.textContent = state.storage);
   renderNotes();
   if (!el('view-settings').classList.contains('active-page')) fillPreferences();
@@ -134,13 +141,24 @@ function renderState(newState) {
 
 function renderChat() {
   if (!state) return;
+  const sameChat = el("chatLog").dataset.chat === state.active_chat_id;
   el("chatLog").dataset.chat = state.active_chat_id;
   const history = state.history || [];
   el('welcome').classList.toggle('hidden', history.length > 0);
   const log = el('chatLog');
-  log.replaceChildren();
+  const top = log.scrollTop;
+  const follow = !sameChat || log.scrollHeight - top - log.clientHeight < 120;
+  const old = [...log.children];
+  let keep = 0;
+  while (sameChat && keep < history.length && old[keep]?.messageText === history[keep].content &&
+         old[keep]?.messageStar === state.stars.includes(keep) && !old[keep]?.isLast) keep++;
+  while (log.children.length > keep) log.lastElementChild.remove();
   history.forEach((entry, index) => {
+    if (index < keep) return;
     const msg = document.createElement('div');
+    msg.messageText = entry.content;
+    msg.messageStar = state.stars.includes(index);
+    msg.isLast = index === history.length - 1;
     msg.dataset.index = index;
     msg.className = 'msg ' + (entry.role === 'user' ? 'user' : 'assistant');
     const bubble = document.createElement('div');
@@ -151,9 +169,13 @@ function renderChat() {
     const tools = document.createElement('div');
     tools.className = 'reply-actions';
     const starred = state.stars.includes(index);
-    const chatId = state.active_chat_id, revision = state.revision;
+    const chatId = state.active_chat_id;
     tools.append(action(starred ? '★ Favoride' : '☆ Favori', () =>
-      library('star', {id:chatId, index, revision, on:!starred})));
+      library('star', {id:chatId, index, revision:state.revision, on:!starred})));
+    tools.append(action('Sil', async()=>{
+      if (confirm('Bu mesaj ve eşleşen yanıt silinsin mi?')) await extra({kind:'delete_message',id:chatId,index,revision:state.revision});
+    }));
+    tools.append(action('Hafızaya öner',()=>saveMemoryCandidate(entry.content)));
     tools.append(action('Kopyala', () => navigator.clipboard.writeText(entry.content)));
     if (entry.role === 'user') tools.append(action('Düzenle', async () => {
       if (busy) return;
@@ -174,7 +196,7 @@ function renderChat() {
     }
     log.appendChild(msg);
   });
-  log.scrollTop = log.scrollHeight;
+  log.scrollTop = follow ? log.scrollHeight : top;
 }
 
 function renderHistory() {
@@ -389,7 +411,10 @@ async function changeLength(style) {
 function renderApps() {
   const root = el('appList');
   root.replaceChildren();
-  apps.forEach(app => {
+  const favorites = state?.extras.favorite_apps || [];
+  const query = el('appSearch').value.trim().toLocaleLowerCase('tr');
+  [...apps].sort((a,b)=>Number(favorites.includes(b.id))-Number(favorites.includes(a.id))).filter(
+    app=>app.name.toLocaleLowerCase('tr').includes(query)).forEach(app => {
     const card = document.createElement('div');
     card.className = 'app-card';
     card.dataset.id = app.id;
@@ -415,7 +440,9 @@ function renderApps() {
     edit.type = 'button';
     edit.textContent = app.ready ? 'Yol' : 'Ekle';
     edit.addEventListener('click', () => openAppModal(app));
-    buttons.append(open, edit);
+    buttons.append(action(favorites.includes(app.id) ? '★' : '☆',async()=>{
+      await extra({kind:'app_favorite',id:app.id});renderApps();
+    }),open, edit);
     card.append(icon, meta, buttons);
     root.appendChild(card);
   });
@@ -536,6 +563,7 @@ async function initialize() {
   wireEvents();
   wireLibrary();
   wireHybrid();
+  wireStudio();
   wireWorkspace();
   try {
     const boot = await request('/api/bootstrap');

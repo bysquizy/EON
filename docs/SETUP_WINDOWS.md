@@ -7,10 +7,10 @@ EON v0.3.0, Python ile çalışan yerel bir tarayıcı uygulamasıdır. Henüz `
 1. [Python 3.10+](https://www.python.org/downloads/windows/) ve [Ollama](https://ollama.com/download/windows) kur.
 2. Windows kullanıcı ortam değişkenlerinden `OLLAMA_NO_CLOUD=1` ve `OLLAMA_HOST=127.0.0.1:11434` değerlerini ayarla. Ollama'yı tamamen kapatıp yeniden aç.
 3. PowerShell'de `ollama pull qwen3:4b-instruct` komutunu çalıştır. Hafif model için `ollama pull qwen3:1.7b` kullanılabilir.
-4. GitHub'da **Releases → v0.3.0 → Source code (zip)** arşivini indir ve klasöre çıkar.
+4. GitHub'da **Releases → v0.4.0 → Source code (zip)** arşivini indir ve klasöre çıkar.
 5. `baslat.bat` dosyasına çift tıkla. Alternatif: klasörde `py -3 eon.py`.
 
-Terminalde `EON v0.3.0 hazır. Yerel adres: http://127.0.0.1:...` yazdığında arayüz tarayıcıda açılır. Terminali açık tut. EON'u durdurmak için **Ctrl+C**.
+Terminalde `EON v0.4.0 hazır. Yerel adres: http://127.0.0.1:...` yazdığında arayüz tarayıcıda açılır. Terminali açık tut. EON'u durdurmak için **Ctrl+C**.
 
 ### “Failed to fetch” / bağlantı kesildi
 
@@ -60,3 +60,7 @@ Ollama’yı kendin yapılandırıyorsan `OLLAMA_MAX_LOADED_MODELS=1` ve `OLLAMA
 ### Önceki sürüme dönüş
 
 EON’u kapat. Windows hesabının EON veri klasöründeki güncel library.dpapi dosyasını ayrı bir adla koru. Aynı klasördeki library.pre-v030.dpapi dosyasının bir kopyasını library.dpapi adıyla yerleştir ve önceki EON sürümünü başlat. Yedek ilk yükseltme öncesindeki sohbetleri içerir. v0.3.0 ile sonradan yapılan değişiklikler güncel kasa kopyasında kalır.
+
+### Parola korumalı yedek
+
+Ayarlar → Şifreli yedek ekranından en az 12 karakterli bir parola seçip dosyayı indir. Geri yükleme için dosya ve parola gerekir. Şifreli Windows kasası açık olmalı. Geri yükleme mevcut sohbetleri ve EON tercihlerini değiştirir. Önce güncel kayıtların ayrı bir yedeğini al.

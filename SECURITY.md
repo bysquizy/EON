@@ -1,6 +1,6 @@
 # Güvenlik
 
-EON v0.3.0 geliştirme önizlemesidir. Henüz tam güvenlik incelemesinden geçmiş bir ürün değildir.
+EON v0.4.0 geliştirme önizlemesidir. Henüz tam güvenlik incelemesinden geçmiş bir ürün değildir.
 
 **Şu anda:**
 - Ollama yerel loopback adresiyle sınırlıdır. Açık onaylı Gemini sohbetleri sabit bir HTTPS sunucusuna gider. Anahtar tarayıcıya verilmez ve yönlendirmeler izlenmez.
@@ -19,3 +19,7 @@ EON v0.3.0 geliştirme önizlemesidir. Henüz tam güvenlik incelemesinden geçm
 **Geliştirme kuralı:** Her yeni riskli yetenek önce dar yetkiyle uygulanır; varsayılan kapalıdır ve reddetme testleri gerekir. Sırlar, kişisel yollar ve gerçek kullanıcı verileri GitHub'a eklenmez. [Depo politikası](docs/CONTENT_POLICY.md).
 
 Başlatıcı sekmeye rastgele bir erişim sırrını URL parçasında iletir. Tarayıcı bu parçayı adres çubuğundan kaldırır ve sekme oturumunda tutar. Özel GET ve POST uçları erişim başlığını ister. POST istekleri ayrıca oturum CSRF değeri ve aynı origin gerektirir. Sağlık uç noktası yalnız sürüm ve sunucu durumunu verir. Başlatma bağlantısını paylaşma. Aynı Windows kullanıcısının tarayıcısını veya işlemlerini okuyabilen yazılım bu güven sınırının içindedir.
+
+## Parola korumalı yedek
+
+Tarayıcı Web Crypto üzerinden PBKDF2 SHA-256 (600.000 tur) ve AES-256-GCM kullanır. Her yedeğin tuzu ve nonce değeri ayrıdır. Parola yerel HTTP servisine iletilmez. Doğrulanan içerik, oturum başlığı ve CSRF denetimi ardından yerel sunucuda yeniden doğrulanır ve DPAPI kasasına atomik yazılır. Aynı Windows hesabının süreçleri veya tarayıcı eklentileri yerel güven sınırı içindedir. Yedek parolası unutulursa kurtarma anahtarı bulunmaz.

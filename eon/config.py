@@ -40,7 +40,7 @@ class LocalSettings:
     keep_alive: str = "3m"
 
     def __post_init__(self) -> None:
-        if self.keep_alive not in ("0", "3m", "15m"):
+        if self.keep_alive not in ("0", "1m", "3m", "5m", "15m"):
             raise ValueError("Geçersiz bekletme süresi.")
         if not valid_model(self.model):
             raise ValueError("Geçersiz veya bulut modeli.")

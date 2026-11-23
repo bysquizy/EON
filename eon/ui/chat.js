@@ -16,7 +16,23 @@ function action(label, handler) {
 function markdown(root, text) {
   let code = null;
   let list = null;
-  for (const line of text.split('\n')) {
+  const lines = text.split('\n');
+  for (let i=0; i<lines.length; i++) {
+    const line=lines[i];
+    if (!code && line.includes('|') && /^\s*\|?\s*:?-{3,}/.test(lines[i+1] || '')) {
+      const table = document.createElement('table');
+      const headers = line.trim().replace(/^\||\|$/g,'').split('|');
+      const addRow = (values,tag) => {
+        const row=table.insertRow();
+        for(const value of values.slice(0,24)) {
+          const cell=document.createElement(tag); cell.textContent=value.trim();row.append(cell);
+        }
+      };
+      addRow(headers,'th'); i++;
+      while(lines[i+1]?.includes('|')) addRow(lines[++i].trim().replace(/^\||\|$/g,'').split('|'),'td');
+      const wrap=document.createElement('div');wrap.className='table-scroll';wrap.append(table);root.append(wrap);
+      list=null;continue;
+    }
     if (/^\s*```/.test(line)) {
       if (code) code = null;
       else {
@@ -30,15 +46,37 @@ function markdown(root, text) {
       list = null;
       continue;
     }
-    if (code) { code.append(line + '\n'); continue; }
-    const bullet = /^[-*] (.*)/.exec(line);
+    if (code) {
+      for(const token of line.split(/(\b(?:def|class|return|if|else|for|while|function|const|let|import|from|True|False|null)\b)/g)) {
+        if (/^(def|class|return|if|else|for|while|function|const|let|import|from|True|False|null)$/.test(token)) {
+          const mark=document.createElement('span');mark.className='code-keyword';mark.textContent=token;code.append(mark);
+        } else code.append(token);
+      }
+      code.append('\n');continue;
+    }
+    const bullet = /^(?:[-*]|\d+\.) (.*)/.exec(line);
+    const ordered = /^\d+\. /.test(line);
+    const quote = /^> ?(.*)/.exec(line);
     const heading = /^(#{1,6}) (.*)/.exec(line);
-    const node = document.createElement(bullet ? 'li' : heading ? 'h4' : 'div');
+    const node = document.createElement(bullet ? 'li' : heading ? 'h4' : quote ? 'blockquote' : 'div');
     if (bullet) {
-      if (!list) { list = document.createElement('ul'); root.append(list); }
+      if (!list || list.tagName !== (ordered ? 'OL' : 'UL')) { list = document.createElement(ordered ? 'ol' : 'ul'); root.append(list); }
       list.append(node);
     } else { list = null; root.append(node); }
-    for (const part of (bullet?.[1] ?? heading?.[2] ?? line).split(/(\*\*[^*]+\*\*|`[^`]+`)/g)) {
+    for (const part of (bullet?.[1] ?? heading?.[2] ?? quote?.[1] ?? line).split(/(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]{1,200}\]\([^\s)]{1,1024}\)|\$[^$]{1,200}\$)/g)) {
+      const link=/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/i.exec(part);
+      if(link) {
+        let url; try {url=new URL(link[2]);} catch {}
+        if (url && !url.username && !url.password && (url.protocol==='https:' || url.protocol==='http:')) {
+          const anchor=document.createElement('a');anchor.href=url.href;anchor.target='_blank';
+          anchor.rel='noopener noreferrer';anchor.textContent=link[1];node.append(anchor);continue;
+        }
+      }
+      if(part.startsWith('$') && part.endsWith('$') && part.length>2) {
+        const math=document.createElement('span');math.className='math-inline';
+        math.textContent=part.slice(1,-1).replaceAll('\\times','×').replaceAll('\\cdot','·').replaceAll('\\pm','±');
+        node.append(math);continue;
+      }
       if (part.startsWith('**') && part.endsWith('**')) {
         const strong = document.createElement('strong');
         strong.textContent = part.slice(2,-2);
@@ -129,6 +167,7 @@ function renderNotes() {
   const root = el('notes');
   root.replaceChildren();
   for (const [id,value] of Object.entries(state.memory)) {
+    if (el('memorySearch') && !value.toLocaleLowerCase('tr').includes(el('memorySearch').value.trim().toLocaleLowerCase('tr'))) continue;
     const row = document.createElement('div');
     row.className = 'note-row';
     const body = document.createElement('span');

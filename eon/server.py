@@ -19,6 +19,7 @@ ASSETS = {
     "/workspace.js": ("workspace.js", "application/javascript; charset=utf-8"),
     "/chat.js": ("chat.js", "application/javascript; charset=utf-8"),
     "/app.js": ("app.js", "application/javascript; charset=utf-8"),
+    "/studio.js": ("studio.js", "application/javascript; charset=utf-8"),
     "/hybrid.js": ("hybrid.js", "application/javascript; charset=utf-8"),
     "/theme.css": ("theme.css", "text/css; charset=utf-8"),
     "/extras.js": ("extras.js", "application/javascript; charset=utf-8"),
@@ -94,34 +95,50 @@ class EonHandler(BaseHTTPRequestHandler):
                                     "models": self.server.service.models(),
                                     "apps": self.server.service.apps()})
         if path == "/api/health":
-            return self._json(200, {"status": "ok", "version": "0.3.0"})
+            return self._json(200, {"status": "ok", "version": "0.4.0"})
         if path == "/api/state":
             return self._json(200, self.server.service.snapshot())
         if path == "/api/models":
             return self._json(200, self.server.service.models(refresh=True))
         if path == "/api/apps":
-            return self._json(200, {"apps": self.server.service.apps()})
+            return self._json(200, {"apps": self.server.service.apps(include_native=True)})
         return self._json(404, {"error": "Sayfa bulunamadı."})
+
+    def _deny_post(self, message):
+        # Consume a small pending body before closing to avoid a TCP reset on Windows.
+        try:
+            size = int(self.headers.get("Content-Length","0"))
+            if 0 < size <= 16000 and not self.headers.get("Transfer-Encoding"):
+                self.connection.settimeout(1)
+                self.rfile.read(size)
+        except (ValueError,OSError):
+            pass
+        return self._json(403, {"error":message})
 
     def do_POST(self):
         if not self._host_ok():
-            return self._json(403, {"error": "Geçersiz adres."})
+            return self._deny_post("Geçersiz adres.")
         origin = self.headers.get("Origin", "")
         token = self.headers.get("X-EON-Token", "")
         if (not self._authorized() or origin != self.server.origin or not token
-                or not hmac.compare_digest(token, self.server.token)
+                or not hmac.compare_digest(token.encode(), self.server.token.encode())
                 or self.headers.get("Sec-Fetch-Site", "same-origin") not in ("same-origin", "none")):
-            return self._json(403, {"error": "İstek doğrulanamadı."})
+            return self._deny_post("İstek doğrulanamadı.")
         if self.headers.get("Content-Type", "").split(";")[0].strip().lower() != "application/json":
             return self._json(415, {"error": "JSON istek gerekli."})
         try:
             content_length = int(self.headers.get("Content-Length", "-1"))
-            if not 0 <= content_length <= 16000:
+            limit = 24*1024*1024 if self.path == "/api/backup/restore" else 16000
+            if not 0 <= content_length <= limit:
                 return self._json(413, {"error": "İstek çok büyük."})
+            if self.headers.get("Transfer-Encoding"):
+                return self._json(400, {"error":"Aktarım biçimi desteklenmiyor."})
+            self.connection.settimeout(12)
             payload = json.loads(self.rfile.read(content_length).decode("utf-8"))
+            self.connection.settimeout(None)
             if not isinstance(payload, dict):
                 return self._json(400, {"error": "Geçersiz veri."})
-        except (TypeError, ValueError, UnicodeError):
+        except (OSError, TypeError, ValueError, UnicodeError):
             return self._json(400, {"error": "Geçersiz JSON."})
         service = self.server.service
         route = urlsplit(self.path).path
@@ -152,7 +169,7 @@ class EonHandler(BaseHTTPRequestHandler):
             elif route in {"/api/library/" + kind for kind in ("project", "mode", "look", "configure", "pin", "star")}:
                 result = service.library_action(route.rsplit("/", 1)[1], payload)
             elif route == "/api/credentials":
-                result = service.credentials_action(payload.get("action"))
+                result = service.credentials_action(payload.get("action"), payload.get("model"), payload.get("consent"))
             elif route == "/api/cloud/new":
                 result = service.cloud_chat(payload.get("model"), payload.get("id"), payload.get("consent"),
                                             payload.get("memory"), payload.get("instructions"))
@@ -167,14 +184,20 @@ class EonHandler(BaseHTTPRequestHandler):
                 result = service.save_icon(ident, windows_pixels(service.launcher.target(ident)))
             elif route == "/api/apps/icon":
                 result = service.save_icon(payload.get("id"), payload.get("pixels"))
+            elif route == "/api/extras":
+                result = service.extra_action(payload)
+            elif route == "/api/backup/export":
+                from copy import deepcopy
+                with service._lock:
+                    result = deepcopy(service.backup_data())
+            elif route == "/api/backup/restore":
+                result = service.restore_data(payload)
             elif route == "/api/runtime":
                 result = service.runtime_action(payload.get("action"), payload.get("value"))
             elif route == "/api/weather/preferences":
                 result = service.weather_settings(payload)
             elif route == "/api/weather":
-                from .weather import forecast
-                pref = service.weather_pref.copy()
-                result = forecast(pref["enabled"] and payload.get("consent") is True, pref.get("lat"), pref.get("lon"))
+                result = service.weather_report(payload.get("consent"))
             elif route == "/api/preferences":
                 result = service.preferences(payload.get("instructions"), payload.get("context"), payload.get("output"))
             elif route == "/api/memory":
@@ -203,7 +226,7 @@ class EonHandler(BaseHTTPRequestHandler):
                 result = service.clear()
             elif route == "/api/apps/refresh":
                 service.launcher.refresh()
-                result = {"apps": service.apps()}
+                result = {"apps": service.apps(include_native=True)}
             elif route == "/api/apps/restore":
                 service.launcher.restore_presets()
                 result = {"apps": service.apps()}

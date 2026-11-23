@@ -10,6 +10,7 @@
   <script defer src="/chat.js"></script>
   <script defer src="/workspace.js"></script>
   <script defer src="/hybrid.js"></script>
+  <script defer src="/studio.js"></script>
   <script defer src="/app.js"></script>
   <script defer src="/extras.js"></script>
 </head>
@@ -31,7 +32,7 @@
   </svg>
   <div class="window">
     <header class="topbar">
-      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.3.0</span></div>
+      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.4.0</span></div>
       <button id="commandOpen" class="outline-button" aria-haspopup="dialog" title="Komut Merkezi (Ctrl+K)">Komutlar <kbd>Ctrl K</kbd></button>
       <div class="ambient"><time id="clock"></time><span id="forecast">Hava durumu kapalı</span></div>
       <div class="top-status" id="connection"><span class="status-dot"></span><span id="connectionText">Bağlanıyor...</span></div>
@@ -55,6 +56,8 @@
         <section class="page chat-page active-page" id="view-chat" aria-label="Sohbet">
           <div class="planet" aria-hidden="true"></div>
           <div class="chat-top-actions" id="chatActions">
+            <button id="chatFind" class="text-button">Mesaj bul</button>
+            <button id="undoChat" class="text-button" hidden>Geri al</button>
             <button class="text-button" id="chatOptions" aria-haspopup="dialog">Sohbet seçenekleri</button>
             <button type="button" class="text-button" id="summaryButton">Sohbeti özetle</button>
             <button type="button" class="text-button" id="clearButton">Temizle</button>
@@ -83,6 +86,7 @@
         </section>
         <section class="page content-page" id="view-apps" aria-label="Uygulamalar">
           <div class="page-heading"><div><p class="eyebrow">ARAÇLAR</p><h2>Uygulamalar</h2><p>Bilgisayarındaki programları buradan tek tıkla aç.</p></div><button class="outline-button" id="refreshApps" type="button"><svg><use href="#i-refresh"/></svg> Yeniden ara</button></div>
+          <input class="field" id="appSearch" type="search" aria-label="Uygulama ara" placeholder="Uygulama ara">
           <div class="app-list" id="appList"></div>
           <div class="app-footer"><span>Yol bulunamadıysa uygulamayı seçerek ekleyebilirsin.</span><button id="addApp" class="outline-button" type="button"><svg><use href="#i-plus"/></svg> Uygulama ekle</button></div>
           <button type="button" class="text-button" id="restoreApps">Gizlenen hazır uygulamaları göster</button>
@@ -105,6 +109,11 @@
         <section class="page content-page" id="view-settings" aria-label="Ayarlar">
           <div class="page-heading"><div><p class="eyebrow">KONTROL</p><h2>Ayarlar</h2><p>EON'u kullanmak istediğin gibi ayarla.</p></div></div>
           <div class="settings-grid">
+            <div class="settings-card"><h3>Çalışma araçları</h3>
+              <button class="outline-button" id="promptLibrary">Prompt kütüphanesi</button>
+              <button class="outline-button" id="focusMode">Odak modu</button>
+              <button class="outline-button" id="backupTools">Şifreli yedek</button>
+            </div>
             <div class="settings-card"><h3>AI sağlayıcısı</h3>
               <p>Yeni sohbetler yerel Ollama ile açılır. Gemini için ayrı bir sohbet aç ve aktarımı onayla.</p>
               <button class="outline-button" id="localNew">Yerel sohbet aç</button>
@@ -114,12 +123,14 @@
               <select id="cloudModel" aria-label="Google Gemini modeli"></select>
               <label><input type="checkbox" id="shareMemory"> Bu Gemini sohbetine genel hafızayı dahil et</label>
               <label><input type="checkbox" id="sharePrefs"> Bu Gemini sohbetine genel yönergelerimi dahil et</label>
+              <button class="text-button" id="cloudSample">Kısa gerçek yanıtı dene</button>
               <button class="text-button" id="compareModels">Örnek soruyla karşılaştır</button><p id="comparison" role="status"></p>
               <button class="outline-button" id="cloudNew">Gemini sohbetini etkinleştir</button>
               <p>Test yalnız model listesini ister. Sohbet iletileri Google’a gider. Kota, ücret ve verilerin ürün geliştirmede kullanımı API hesabına ve hizmet katmanına bağlıdır. Google AI Pro, API kotası garantisi vermez.</p>
             </div>
             <div class="settings-card"><h3>Model belleği ve sistem sağlığı</h3>
-              <label>Ollama yanıt sonrası <select id="keepAlive"><option value="0">Hemen boşalt</option><option value="3m">3 dakika tut</option><option value="15m">15 dakika tut</option></select></label>
+              <label>Ollama yanıt sonrası <select id="keepAlive"><option value="0">Hemen boşalt</option><option value="1m">1 dakika tut</option><option value="3m">3 dakika tut</option><option value="5m">5 dakika tut</option><option value="15m">15 dakika tut</option></select></label>
+              <p>Hemen boşaltma belleği serbest bırakır. Sonraki istek model yeniden yüklenirken gecikebilir.</p>
               <button class="outline-button" id="unloadModel">Seçili yerel modeli boşalt</button>
               <button class="outline-button" id="runtimeStatus">Sistem sağlığını göster</button><p id="healthInfo" role="status"></p>
             </div>

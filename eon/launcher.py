@@ -104,6 +104,7 @@ class ApplicationRegistry:
         self._hidden = set()
         self._custom = self._load()
         self._discovered: dict[str, str] = {}
+        self._native_icons = {}
         if self.platform == "win32":
             self.refresh()
 
@@ -152,9 +153,11 @@ class ApplicationRegistry:
             import winreg
             for key, preset in PRESETS.items():
                 for executable in preset["executables"]:
-                    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                    for hive, view in ((winreg.HKEY_CURRENT_USER, 0),
+                                       (winreg.HKEY_LOCAL_MACHINE, winreg.KEY_WOW64_64KEY),
+                                       (winreg.HKEY_LOCAL_MACHINE, winreg.KEY_WOW64_32KEY)):
                         try:
-                            with winreg.OpenKey(hive, rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{executable}") as h:
+                            with winreg.OpenKey(hive, rf"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{executable}", 0, winreg.KEY_READ | view) as h:
                                 target = winreg.QueryValue(h, None)
                             discovered[key] = safe_launch_path(target)
                             break
@@ -195,6 +198,30 @@ class ApplicationRegistry:
                 break
         with self._lock:
             self._discovered = discovered
+            self._native_icons.clear()
+
+    def native_icon(self, entry):
+        if self.platform != "win32" or not entry["ready"]:
+            return None
+        path = entry["path"]
+        try:
+            stamp = Path(path).stat().st_mtime_ns
+        except OSError:
+            return None
+        key = (path, stamp)
+        with self._lock:
+            if key in self._native_icons:
+                return self._native_icons[key]
+        from .icons import windows_pixels
+        try:
+            image = windows_pixels(self.target(entry["id"]))
+        except (OSError, ValueError):
+            image = None
+        with self._lock:
+            if len(self._native_icons) >= 64:
+                self._native_icons.clear()
+            self._native_icons[key] = image
+        return image
 
     def restore_presets(self):
         with self._lock:

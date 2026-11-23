@@ -56,3 +56,11 @@ dialog{border-radius:18px;box-shadow:0 30px 90px rgba(0,0,0,.5)}dialog::backdrop
 #providerBadge { overflow-wrap:anywhere; }
 .settings-card button { margin:3px 2px; }
 @media(max-width:1100px) { #railToggle { display:none; } }
+
+.bubble blockquote { border-inline-start:3px solid var(--accent); margin:.65em 0; padding-inline-start:.9em; color:var(--soft); }
+.bubble .table-scroll { overflow-x:auto; margin:.75em 0; }
+.bubble table { border-collapse:collapse; min-width:55%; }
+.bubble :is(td,th) { padding:.4em .65em; border:1px solid var(--line); text-align:start; }
+.bubble a,.code-keyword { color:var(--accent); }
+.math-inline { font-family:Cambria Math,serif; color:var(--accent); }
+#chatActions { flex-wrap:wrap; }

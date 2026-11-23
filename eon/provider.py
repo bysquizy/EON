@@ -56,7 +56,7 @@ class LocalOllama:
             conn.close()
 
     def loaded(self):
-        return [{"model": m.get("name"), "bytes": m.get("size"), "vram": m.get("size_vram")}
+        return [{"model": m.get("name"), "bytes": m.get("size"), "vram": m.get("size_vram"), "expires": m.get("expires_at"), "context": m.get("context_length")}
                 for m in self._call("GET", "/api/ps").get("models", []) if isinstance(m, dict)]
 
     def unload(self):

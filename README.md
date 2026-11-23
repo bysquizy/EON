@@ -2,6 +2,8 @@
 
 EON, Windows’ta tarayıcıdan kullanılan bir sohbet asistanıdır. Varsayılan sağlayıcı bilgisayarındaki Ollama’dır. İstersen Google AI Studio anahtarınla ayrı bir Gemini sohbeti açabilirsin.
 
+v0.4.0, Gemini anahtar doğrulaması, proje bazlı yerel model ve hafıza seçimleri, prompt şablonları, odak zamanlayıcısı ve parola korumalı yedek ekler.
+
 ## Başlangıç
 
 1. Python 3.10+ ve Ollama kur. Bir yerel model indir. Örneğin `ollama pull qwen3:4b-instruct`.
@@ -12,4 +14,4 @@ Projeler, seçici hafıza, favoriler ve sohbet geçmişi Windows hesabına bağl
 
 Gemini için Ayarlar’da anahtarı Windows penceresine gir, Google bağlantısını test et, model seç ve gönderim kapsamını onayla. Hava durumu ayrı bir izindir.
 
-[Windows kurulumu](docs/SETUP_WINDOWS.md) · [Gizlilik](docs/PRIVACY.md) · [Sürüm notları](docs/releases/v0.3.0.md)
+[Windows kurulumu](docs/SETUP_WINDOWS.md) · [Gizlilik](docs/PRIVACY.md) · [Sürüm notları](docs/releases/v0.4.0.md)

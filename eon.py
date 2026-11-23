@@ -1,4 +1,4 @@
-"""EON v0.3.0 — local desktop-style interface, or optional terminal mode."""
+"""EON v0.4.0 — local desktop-style interface, or optional terminal mode."""
 import argparse
 import webbrowser
 
@@ -8,7 +8,7 @@ from eon.server import start_server
 
 
 def run_cli(service: EonService) -> int:
-    print("EON v0.3.0 — Yerel CLI · /yardim ile komutları gör")
+    print("EON v0.4.0 — Yerel CLI · /yardim ile komutları gör")
     while True:
         try:
             text = input("Sen > ").strip()
@@ -39,7 +39,7 @@ def main() -> int:
         return run_cli(service)
     server = start_server(service=service)
     url = server.origin + "#access=" + server.access
-    print("EON v0.3.0 hazır. Yerel adres:", url)
+    print("EON v0.4.0 hazır. Yerel adres:", url)
     print("Kapatmak için Ctrl+C. Dosyalar ve program yolları GitHub'a gönderilmez.")
     if not args.no_browser:
         webbrowser.open(url)

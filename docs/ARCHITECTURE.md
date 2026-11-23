@@ -25,3 +25,7 @@ Kasa şeması 3, şema 1 ve 2’yi okuyabilir. Eski şifreli içerik ilk yazımd
 Gemini model kimlikleri sabitlenmez. Google model listesinde generateContent destekleyen Gemini adları seçilebilir. İstemci streamGenerateContent üzerinden metin parçalarını işler ve sağlayıcı hata gövdelerini kullanıcıya geri vermez. [Model listesi](https://ai.google.dev/api/models) · [Üretim API’si](https://ai.google.dev/api/generate-content)
 
 Yüklü model ve VRAM miktarları sorgu anında Ollama API’sinden gelir. Model çıktısındaki eval_count ve eval_duration üretim hızına çevrilir. EON’un ilk parça ve toplam süre ölçümleri ayrı tutulur. [Ollama çalışan modeller](https://docs.ollama.com/api/ps) · [Ollama yapılandırması](https://docs.ollama.com/faq)
+
+## v0.4.0 yedek ve görünüm
+
+Şema 3 ek sohbet ve proje ayarlarını isteğe bağlı bir alanda taşır. Eski şifreli kasalar varsayılan değerlerle açılır. Parola korumalı yedek tarayıcıda AES-GCM ile hazırlanır. Geri yükleme aktif üretime izin vermez ve önce yeni kasayı doğrular. Dosya yazımı tamamlanınca açık oturumun verileri değiştirilir. Uygulama simgeleri Windows’tan uygulama ekranı açıldığında alınır ve işlem belleğinde önbelleğe alınır.

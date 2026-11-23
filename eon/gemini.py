@@ -3,12 +3,14 @@ import http.client
 import json
 import re
 import socket
+import ssl
 from urllib.parse import urlencode
 from .provider import LocalModelError
 
 MODEL = re.compile(r"models/gemini-[a-zA-Z0-9._-]{1,100}")
 ERRORS = {400:"İstek veya anahtar geçersiz.",401:"API anahtarını kontrol et.",
-          403:"Anahtarın erişimi veya bölge izni yok.",429:"Kota veya hız sınırına ulaşıldı."}
+          403:"Anahtar izinlerini, proje kısıtlarını ve bölge erişimini kontrol et.",
+          404:"Model artık erişilebilir olmayabilir. Model listesini yenile.",429:"Kota veya hız sınırına ulaşıldı."}
 
 
 class Gemini:
@@ -32,8 +34,16 @@ class Gemini:
             conn.request(method, path, body, {"x-goog-api-key": self.key, "Content-Type":"application/json"})
             with conn.getresponse() as reply:
                 if reply.status != 200:
-                    raise LocalModelError("Gemini: " + ERRORS.get(reply.status, "Servis isteği tamamlanamadı."))
+                    raise LocalModelError("Gemini: " + ERRORS.get(reply.status, "Google servis hatası." if reply.status >= 500 else "Servis isteği tamamlanamadı."))
                 return consume(reply)
+        except socket.gaierror:
+            raise LocalModelError("Gemini DNS adresi çözülemedi.") from None
+        except ssl.SSLError:
+            raise LocalModelError("Gemini TLS bağlantısı doğrulanamadı.") from None
+        except TimeoutError:
+            if job:
+                job.check()
+            raise LocalModelError("Gemini bağlantısı zaman aşımına uğradı.") from None
         except (OSError, ValueError, TypeError, KeyError, AttributeError, http.client.HTTPException):
             if job:
                 job.check()
@@ -51,13 +61,19 @@ class Gemini:
                 query["pageToken"] = token
             page = self._request("GET", "/v1beta/models?" + urlencode(query),
                                  lambda reply: json.loads(reply.read(1024*1024)))
+            if not isinstance(page, dict) or not isinstance(page.get("models", []), list):
+                raise LocalModelError("Gemini model listesi okunamadı.")
             for model in page.get("models", []):
+                if not isinstance(model, dict):
+                    continue
                 name = model.get("name", "")
-                if MODEL.fullmatch(name) and "generateContent" in model.get("supportedGenerationMethods", []):
+                if isinstance(name, str) and MODEL.fullmatch(name) and "generateContent" in model.get("supportedGenerationMethods", []):
                     results.append(name)
             token = page.get("nextPageToken")
             if not token:
                 break
+        if not results:
+            raise LocalModelError("Bu anahtar için metin üreten Gemini modeli bulunamadı.")
         return sorted(set(results))
 
     def stream(self, messages, emit, job):

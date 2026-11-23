@@ -115,6 +115,7 @@ function manage(kind) {
     await library(kind, {id:select.value, name:name.value, instructions:instructions.value});
     el('libraryDialog').close();
   }), remove);
+  if (kind==='project') body.append(action('Proje modeli ve hafızası',()=>projectOptions(select.value)));
 }
 function chatOptions() {
   const chat = currentChat();
@@ -123,8 +124,14 @@ function chatOptions() {
   options(project, [['','Projesiz'], ...named(state.projects)], chat.project);
   const mode = field(body,'Mod','select');
   options(mode,named(state.modes),chat.mode);
+  const local = field(body,'Sohbetin yerel modeli','select');
+  const length = field(body,'Yanıt uzunluğu','select');
+  const opts=state.extras.chat_options[chat.id] || {};
+  options(local,[['','Proje veya genel seçim'],...installedModels.map(name=>[name,name])],opts.model||'');
+  options(length,[['','Genel ayar'],['kisa','Kısa'],['normal','Normal'],['detayli','Detaylı']],opts.style||'');
   body.append(action('Uygula', async () => {
     await library('configure',{id:chat.id, project:project.value, mode:mode.value});
+    await extra({kind:'chat',id:chat.id,model:local.value,style:length.value});
     el('libraryDialog').close();
   }), action('Pano yardımcısı', clipboardDialog), action('Markdown indir',()=>downloadChat('md')),
       action('Metin indir',()=>downloadChat('txt')));
@@ -181,6 +188,10 @@ function commandPalette() {
     ['Favoriler',()=>{el('favoritesOnly').checked=true; el('chatSearch').value=''; el('projectFilter').value='*'; showPage('history');}],
     ['Sohbet seçenekleri',chatOptions], ['Projeleri yönet',()=>manage('project')], ['Modları yönet',()=>manage('mode')],
     ['Pano yardımcısı',clipboardDialog], ['Ayarlar',()=>showPage('settings')], ['Hafıza',()=>showPage('memory')],
+    ...named(state.projects).map(([id,name])=>['Proje · '+name,()=>{
+      el('projectFilter').value=id; el('chatSearch').value='';el('favoritesOnly').checked=false;showPage('history');
+    }]),
+    ...Object.values(state.extras.prompts).map(p=>['Şablon · '+p.name,()=>applyPrompt(p.text)]),
     ...state.conversations.map(c=>['Sohbet · '+c.title,()=>openChat(c.id)]),
     ...installedModels.map(name=>['Model · '+name,()=>changeModel(name)]),
     ...apps.map(app=>['Uygulama · '+app.name,()=>{

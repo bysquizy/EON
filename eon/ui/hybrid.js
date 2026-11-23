@@ -9,10 +9,12 @@ const cities = [
 let weatherLoaded = false, weatherEpoch = 0;
 function renderHybrid() {
   const metrics = state.metrics || {};
-  el('providerBadge').textContent = (state.cloud_model ? 'Google Gemini · '+state.cloud_model.replace('models/','') : 'Ollama · '+state.model)
+  const chat = currentChat();
+  const local = state.extras.chat_options[chat.id]?.model || state.extras.projects[chat.project]?.model || state.model;
+  el('providerBadge').textContent = (state.cloud_model ? 'Google Gemini · '+state.cloud_model.replace('models/','') : 'Ollama · '+local)
     + (metrics.seconds != null ? ' · Son yanıt '+metrics.seconds+' sn' : '');
   el('providerBadge').title = metrics.time ? new Date(metrics.time*1000).toLocaleString()+
-    ' · '+metrics.model+' · İlk parça '+(metrics.first ?? '—')+' sn · '+(metrics.rate ?? '—')+' token/sn' : '';
+    ' · '+metrics.model+' · İlk parça '+(metrics.first ?? '—')+' sn · '+(metrics.rate ?? '—')+' token/sn · Yaklaşık bağlam '+(metrics.context_estimate ?? '—')+' token' : '';
   el('modelSelect').hidden = !!state.cloud_model;
   if (!disconnected) el('connectionText').textContent = state.cloud_model
     ? 'Gemini · '+(state.cloud_allowed ? 'onaylı' : 'onay bekliyor')
@@ -25,7 +27,7 @@ function renderHybrid() {
     el('weatherRead').disabled = !pref.enabled;
     el('lat').value = pref.lat ?? '';
     el('lon').value = pref.lon ?? '';
-    if (pref.enabled) el('forecast').textContent = 'Hava durumu · güncelleme bekleniyor';
+    if (pref.enabled) el('forecast').textContent = pref.last ? 'Eski veri · '+pref.last : 'Hava durumu · güncelleme bekleniyor';
     if (!pref.asked) {
       const panel = el('weatherWelcome');
       panel.hidden = false;
@@ -43,6 +45,7 @@ function wireHybrid() {
   }
   bind('keyEnter', async()=>{
     const result = await request('/api/credentials',{action:'enter'});
+    if (result.cancelled) return;
     el('cloudModel').replaceChildren();
     toast(result.configured ? 'Anahtar Windows kasasında.' : 'Anahtar eklenmedi.');
   });
@@ -55,6 +58,13 @@ function wireHybrid() {
     const {models}=await request('/api/credentials',{action:'test'});
     options(el('cloudModel'),models.map(m=>[m,m.slice(7)]),models[0]);
     toast(models.length ? 'Google model listesi güncellendi.' : 'Uygun model bulunamadı.');
+  });
+  bind('cloudSample',async()=>{
+    const model = el('cloudModel').value;
+    if (!model) throw new Error('Önce Google bağlantısını test et.');
+    if (!confirm('Sabit bir örnek istem Google’a gönderilecek ve kota kullanılabilir. Devam edilsin mi?')) return;
+    const result=await request('/api/credentials',{action:'sample',model,consent:true});
+    el('comparison').textContent = result.answer;
   });
   bind('cloudNew',async()=>{
     const model=el('cloudModel').value;
@@ -81,9 +91,11 @@ function wireHybrid() {
   };
   async function health(action) {
     const s=await request('/api/runtime',{action});
-    const models=s.loaded.map(m=>m.model+' · '+Math.round(m.bytes/1048576)+' MiB (VRAM '+Math.round(m.vram/1048576)+' MiB)');
+    const mib = value=>typeof value==='number' ? Math.round(value/1048576)+' MiB' : '—';
+    const models=s.loaded.map(m=>m.model+' · Model '+mib(m.bytes)+' · VRAM '+mib(m.vram)+
+      (m.expires ? ' · Bekletme bitişi '+new Date(m.expires).toLocaleTimeString() : ''));
     el('healthInfo').textContent = [s.connected ? 'Ollama bağlı' : 'Ollama çevrimdışı',...models,
-      s.busy ? 'Yanıt hazırlanıyor' : 'Boşta',s.storage,s.gemini_tested ? 'Google model listesi alındı' : 'Google bağlantısı doğrulanmadı'].join(' · ');
+      s.busy ? 'Yanıt hazırlanıyor' : 'Boşta',s.loaded.some(m=>m.model===s.selected)?'Seçili model yüklü':'Seçili model bellekte değil','Yerel sunucu hazır',s.storage,s.gemini_tested ? 'Google model listesi alındı' : 'Google bağlantısı doğrulanmadı'].join(' · ');
   }
   bind('unloadModel',()=>health('unload'));
   bind('runtimeStatus',()=>health('status'));
@@ -122,7 +134,7 @@ function wireHybrid() {
       const report=await request('/api/weather',{consent:true});
       if(version===weatherEpoch) el('forecast').textContent=report.label;
     } catch(error) {
-      if(version===weatherEpoch) el('forecast').textContent='Hava verisi alınamadı';
+      if(version===weatherEpoch) el('forecast').textContent=state.weather_pref.last ? 'Çevrimdışı · eski veri · '+state.weather_pref.last : 'Hava verisi alınamadı';
       throw error;
     }
   });
