@@ -1,4 +1,4 @@
-/* EON v0.4.0 — same-origin client. No external APIs or analytics. */
+/* EON v0.4.1 — same-origin client. No external APIs or analytics. */
 'use strict';
 const el = id => document.getElementById(id);
 let csrfToken = '';

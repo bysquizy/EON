@@ -103,7 +103,10 @@ class Gemini:
                     for part in candidate.get("content", {}).get("parts", []):
                         if part.get("text") and not part.get("thought"):
                             emit(part["text"])
-                    if candidate.get("finishReason") in ("STOP", "MAX_TOKENS"):
+                    reason = candidate.get("finishReason")
+                    if reason == "MAX_TOKENS":
+                        raise LocalModelError("Gemini yanıt sınırına ulaştı; yanıt tamamlanmadı. Daha kısa bir istem veya kısa yanıt modu dene.")
+                    if reason == "STOP":
                         finished = True
             if not finished:
                 raise LocalModelError("Gemini tamamlanmış bir yanıt vermedi.")

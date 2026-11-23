@@ -1,5 +1,12 @@
 # Değişiklikler
 
+## v0.4.1
+
+- Gemini sohbetlerinde EON'un kişiliği, aktif proje yönergeleri ve tercih edilen model kullanılır. Açıkça seçilen hafıza/yönergeler DPAPI kasasında saklanan izne bağlıdır; eski kasalar varsayılan olarak paylaşımı etkinleştirmez.
+- Gemini `MAX_TOKENS` yanıtları tamamlanmış sayılmaz veya sohbet geçmişine kaydedilmez. Dengeli ve detaylı Gemini yanıtlarına daha geniş çıktı bütçesi ayrılır.
+- Windows başlangıcı Python 3.10+ kontrolü, kullanıcı başına tek örnek kilidi, güvenli pencere odağı ve isteğe bağlı `baslat.bat --silent` ile iyileştirildi. Konsol çıktısında oturum sırrı gösterilmez; Ollama otomatik başlatılmaz.
+- Google Search Grounding bu sürüme alınmadı: güncel API arayüzü ve proje bazlı ücret/kota koşulları otomatik aramayı güvenli bir varsayılan yapmıyor.
+
 ## v0.4.0
 
 - Gemini anahtar doğrulaması, model keşfi ve ayrı örnek yanıt testi.

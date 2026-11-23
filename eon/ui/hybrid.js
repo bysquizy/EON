@@ -20,6 +20,13 @@ function renderHybrid() {
     ? 'Gemini · '+(state.cloud_allowed ? 'onaylı' : 'onay bekliyor')
     : installedModels.length ? 'Yerel model hazır' : 'Yerel model bekleniyor';
   el('keepAlive').value = state.keep_alive;
+  const geminiPrefs = state.gemini_preferences || {consent:false,memory:false,instructions:false,model:''};
+  if (geminiPrefs.model && !el('cloudModel').options.length) {
+    options(el('cloudModel'), [[geminiPrefs.model, geminiPrefs.model.slice(7)]], geminiPrefs.model);
+  }
+  el('shareMemory').checked = geminiPrefs.memory;
+  el('sharePrefs').checked = geminiPrefs.instructions;
+  el('cloudPrivacyOff').hidden = !geminiPrefs.consent;
   if (!weatherLoaded) {
     weatherLoaded = true;
     const pref = state.weather_pref;
@@ -47,7 +54,11 @@ function wireHybrid() {
     const result = await request('/api/credentials',{action:'enter'});
     if (result.cancelled) return;
     el('cloudModel').replaceChildren();
-    toast(result.configured ? 'Anahtar Windows kasasında.' : 'Anahtar eklenmedi.');
+    if (result.models?.length) {
+      options(el('cloudModel'),result.models.map(m=>[m,m.slice(7)]),result.selected);
+      state.gemini_models_ready=true;
+    }
+    toast(result.models?.length ? 'Anahtar kaydedildi; Gemini modeli hazır.' : result.configured ? 'Anahtar kaydedildi; model listesi için Google bağlantısını test et.' : 'Anahtar eklenmedi.');
   });
   bind('keyDelete',async()=>{
     if (!confirm('Gemini anahtarını kaldırmak istiyor musun?')) return;
@@ -55,8 +66,9 @@ function wireHybrid() {
     el('cloudModel').replaceChildren(); toast('Anahtar kaldırıldı.');
   });
   bind('cloudTest',async()=>{
-    const {models}=await request('/api/credentials',{action:'test'});
-    options(el('cloudModel'),models.map(m=>[m,m.slice(7)]),models[0]);
+    const {models,selected}=await request('/api/credentials',{action:'test'});
+    options(el('cloudModel'),models.map(m=>[m,m.slice(7)]),selected);
+    state.gemini_models_ready=Boolean(models.length);
     toast(models.length ? 'Google model listesi güncellendi.' : 'Uygun model bulunamadı.');
   });
   bind('cloudSample',async()=>{
@@ -67,15 +79,32 @@ function wireHybrid() {
     el('comparison').textContent = result.answer;
   });
   bind('cloudNew',async()=>{
+    if(!state.gemini_models_ready) {
+      const found=await request('/api/credentials',{action:'test'});
+      options(el('cloudModel'),found.models.map(m=>[m,m.slice(7)]),found.selected);
+      state.gemini_models_ready=Boolean(found.models.length);
+    }
     const model=el('cloudModel').value;
     if (!model) throw new Error('Önce Google bağlantısını test et.');
     const memory=el('shareMemory').checked, instructions=el('sharePrefs').checked;
-    const shared=['mesaj ve bu Gemini sohbetinin yakın geçmişi'];
-    if(memory) shared.push('genel hafıza');
-    if(instructions) shared.push('genel yönergeler');
-    if (!confirm('Google’a gönderilecek: '+shared.join(', ')+'. API kotası ve ücretleri uygulanabilir. Onaylıyor musun?')) return;
+    const prefs=state.gemini_preferences || {consent:false,memory:false,instructions:false};
+    const requiresConsent=!prefs.consent || (memory&&!prefs.memory) || (instructions&&!prefs.instructions);
+    if (requiresConsent) {
+      const shared=['bu Gemini sohbetinin mesajları ve yakın geçmişi'];
+      if(memory) shared.push(state.conversations.find(c=>c.id===state.active_chat_id)?.project ? 'yalnızca mevcut projede seçilen hafıza notları' : 'genel hafıza');
+      if(instructions) shared.push('genel kişisel yönergeler');
+      if(state.conversations.find(c=>c.id===state.active_chat_id)?.project) shared.push('yalnızca mevcut projenin yönergeleri ve modu');
+      const first=!prefs.consent;
+      const intro=first?(state.gemini_consent_persistent?'Bu, gelecekteki Gemini sohbetleri için kalıcı bir bulut paylaşım izni verir. ':'Şifreli kasa kullanılamıyor; bu izin yalnızca bu oturum boyunca geçerli olacak. '):'Seçilen ek bağlam Google ile paylaşılacak. ';
+      if (!confirm(intro+'Google’a gönderilecek: '+shared.join(', ')+'. API kotası/ücreti uygulanabilir; API hesabındaki veri koşulları geçerlidir. İzni daha sonra Ayarlar’dan kapatabilirsin. Onaylıyor musun?')) return;
+    }
     const id = state.cloud_model===model ? state.active_chat_id : null;
-    renderState(await request('/api/cloud/new',{id,model,consent:true,memory,instructions})); showPage('chat');
+    renderState(await request('/api/cloud/new',{id,model,consent:requiresConsent,memory,instructions})); showPage('chat');
+  });
+  bind('cloudPrivacyOff',async()=>{
+    if(!confirm('Gemini aktarım iznini kapatılsın mı? Mevcut Gemini sohbetleri bu oturumda yeniden etkinleştirilene kadar yanıt üretemez.')) return;
+    renderState(await request('/api/cloud/privacy',{enabled:false}));
+    toast('Gemini bulut paylaşım izni kapatıldı.');
   });
   bind('compareModels', async()=>{
     if(!el('cloudModel').value) throw new Error('Önce Google bağlantısını test et.');

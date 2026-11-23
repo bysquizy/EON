@@ -1,6 +1,6 @@
 # Güvenlik
 
-EON v0.4.0 geliştirme önizlemesidir. Henüz tam güvenlik incelemesinden geçmiş bir ürün değildir.
+EON v0.4.1 geliştirme önizlemesidir. Henüz tam güvenlik incelemesinden geçmiş bir ürün değildir.
 
 **Şu anda:**
 - Ollama yerel loopback adresiyle sınırlıdır. Açık onaylı Gemini sohbetleri sabit bir HTTPS sunucusuna gider. Anahtar tarayıcıya verilmez ve yönlendirmeler izlenmez.

@@ -46,6 +46,14 @@ class GeminiTests(unittest.TestCase):
         with self.assertRaises(LocalModelError):
             self.client.stream(self.messages,lambda _:None,Generation())
 
+    def test_max_tokens_is_never_reported_as_complete(self):
+        data={"candidates":[{"content":{"parts":[{"text":"yarım"}]},"finishReason":"MAX_TOKENS"}]}
+        self.conn.getresponse.return_value=Response(b"data: "+json.dumps(data).encode()+b"\n")
+        parts=[]
+        with self.assertRaisesRegex(LocalModelError,"yanıt sınırına ulaştı"):
+            self.client.stream(self.messages,parts.append,Generation())
+        self.assertEqual(parts,["yarım"])
+
     def test_statuses_never_echo_secret(self):
         for status in (302,400,401,403,429,503):
             reply = Response(self.client.key.encode())
@@ -156,6 +164,67 @@ class HybridTests(unittest.TestCase):
             self.s.generate(text="another")
             self.assertNotIn("explicit-",str(cloud.return_value.stream.call_args.args[0]))
 
+    def test_gemini_consent_is_persistent_and_revocable(self):
+        model="models/gemini-fixture"
+        self.s.vault=Mock()
+        self.s.cloud_models=[model]
+        self.s.cloud_chat(model,None,True,True,True)
+        ident=self.s.chats.active_id
+        data=self.s.backup_data()
+        restored=EonService(provider_factory=FakeProvider,launcher=Mock())
+        restored._load_data(data)
+        self.assertIn(ident,restored.cloud_allowed)
+        self.assertEqual(restored.cloud_sharing[ident],(True,True))
+        restored.cloud_privacy(False)
+        self.assertNotIn(ident,restored.cloud_allowed)
+        self.assertFalse(restored.snapshot()["gemini_preferences"]["consent"])
+
+    def test_old_schema3_chat_does_not_gain_consent_during_migration(self):
+        self.s.cloud_models=["models/gemini-fixture"]
+        self.s.cloud_chat(self.s.cloud_models[0],None,True)
+        legacy=self.s.backup_data()
+        legacy["extras"].pop("gemini")
+        migrated=EonService(provider_factory=FakeProvider,launcher=Mock())
+        migrated._load_data(legacy)
+        self.assertFalse(migrated.snapshot()["gemini_preferences"]["consent"])
+        self.assertFalse(migrated.cloud_allowed)
+
+    def test_gemini_consent_stays_session_only_without_encrypted_vault(self):
+        model="models/gemini-fixture"
+        self.s.cloud_models=[model]
+        self.s.cloud_chat(model,None,True,True,True)
+        self.assertTrue(self.s.snapshot()["cloud_allowed"])
+        self.assertFalse(self.s.snapshot()["gemini_preferences"]["consent"])
+
+    def test_key_entry_discovers_models_and_prefers_flash(self):
+        self.s.vault=Mock()
+        self.s.secret_path=Path("synthetic-gemini.dpapi")
+        models=["models/gemini-pro-fixture","models/gemini-flash-fixture"]
+        with patch("sys.platform","win32"),patch("subprocess.run",return_value=Mock(returncode=0)), \
+             patch("eon.service.secret",return_value="synthetic-key"),patch("eon.service.Gemini") as cloud:
+            cloud.return_value.models.return_value=models
+            result=self.s.credentials_action("enter")
+        self.assertEqual(result["selected"],models[1])
+        self.assertEqual(result["models"],models)
+
+    def test_gemini_prompt_has_eon_identity_and_only_active_project_context(self):
+        model="models/gemini-fixture"
+        self.s.cloud_models=[model]
+        self.s.cloud_chat(model,None,True,True,True)
+        self.s.library_action("project",{"name":"Work","instructions":"work-only"})
+        self.s.library_action("project",{"name":"Other","instructions":"unrelated-only"})
+        active=self.s.chats.active_id
+        work=next(k for k,v in self.s.workspace.projects.items() if v["name"]=="Work")
+        self.s.library_action("configure",{"id":active,"project":work,"mode":"code"})
+        with patch("eon.service.secret",return_value="synthetic"),patch("eon.service.Gemini") as cloud:
+            cloud.return_value.stream.side_effect=lambda messages,emit,job:emit("ok")
+            self.s.generate(text="code",destination=model)
+            prompt=cloud.return_value.stream.call_args.args[0][0]["content"]
+        self.assertIn("Sen EON'sun",prompt)
+        self.assertIn("work-only",prompt)
+        self.assertNotIn("unrelated-only",prompt)
+
+
     def test_weather_revocation_forgets_location(self):
         self.s.weather_settings({"enabled":True,"lat":40,"lon":30})
         self.s.weather_settings({"enabled":False})
@@ -207,3 +276,20 @@ class HybridTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join()
+
+
+class InstanceGuardTests(unittest.TestCase):
+    def test_mutex_identity_is_stable_and_hides_profile_path(self):
+        from eon.instance import mutex_name
+        first=mutex_name(r"R:\Profiles\Example")
+        self.assertEqual(first,mutex_name(r"R:\Profiles\Example"))
+        self.assertNotIn("Example",first)
+        self.assertNotEqual(first,mutex_name(r"R:\Profiles\Different"))
+
+    def test_second_instance_releases_duplicate_mutex(self):
+        from eon.instance import acquire_instance
+        api=Mock()
+        api.create.return_value=123
+        api.last_error.return_value=183
+        self.assertFalse(acquire_instance(api=api,profile=r"R:\Example"))
+        api.close.assert_called_once_with(123)

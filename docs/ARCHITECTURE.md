@@ -29,3 +29,8 @@ Yüklü model ve VRAM miktarları sorgu anında Ollama API’sinden gelir. Model
 ## v0.4.0 yedek ve görünüm
 
 Şema 3 ek sohbet ve proje ayarlarını isteğe bağlı bir alanda taşır. Eski şifreli kasalar varsayılan değerlerle açılır. Parola korumalı yedek tarayıcıda AES-GCM ile hazırlanır. Geri yükleme aktif üretime izin vermez ve önce yeni kasayı doğrular. Dosya yazımı tamamlanınca açık oturumun verileri değiştirilir. Uygulama simgeleri Windows’tan uygulama ekranı açıldığında alınır ve işlem belleğinde önbelleğe alınır.
+
+
+## v0.4.1 Gemini ve Windows başlatma
+
+Gemini bulut izni ve paylaşım kapsamı xtras.gemini alanında, şifreli kasa zarfıyla birlikte saklanır. Şema numarası değişmez; eski şema 3 kayıtlarında alan bulunmaz ve paylaşım kapalı kalır. Gemini model seçimi ilk erişilebilir Flash adını tercih eder. SSE MAX_TOKENS akışı hata verir ve sohbet mutasyonu gerçekleşmeden durur. Windows mutex adı kullanıcı profil yolunun SHA-256 özetiyle oluşturulur; erişim URL'si ikinci örneğe aktarılmaz. --silent, pyw/pythonw kullanan başlatıcılar içindir.

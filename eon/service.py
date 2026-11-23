@@ -9,7 +9,7 @@ from .gemini import Gemini, MODEL
 from .vault import Vault
 from .workspace import Workspace, check_text, fold
 
-from .config import DEFAULT_MODEL, LocalSettings, OUTPUT_LIMITS, STYLE_GUIDANCE, SYSTEM_PROMPT
+from .config import DEFAULT_MODEL, GEMINI_SYSTEM_PROMPT, LocalSettings, OUTPUT_LIMITS, STYLE_GUIDANCE, SYSTEM_PROMPT
 from .provider import LocalModelError, LocalOllama, StreamingProvider
 from .session import ConversationCollection
 from .tools import ToolError, calculate
@@ -68,7 +68,8 @@ class EonService:
         self.model_cache = None
         self.icons = {}
         self.metrics = {}
-        self.extras = {"prompts":{}, "favorite_apps":[], "chat_options":{}, "projects":{}}
+        self.extras = {"prompts":{}, "favorite_apps":[], "chat_options":{}, "projects":{},
+                       "gemini":{"consent":False,"memory":False,"instructions":False,"model":""}}
         self.undo = {}
         self.weather_pref = {"asked":False, "enabled":False}
         self.legacy_backup = False
@@ -115,6 +116,12 @@ class EonService:
         if not isinstance(extras, dict) or any(key in extras and type(extras[key]) is not type(self.extras[key]) for key in self.extras):
             raise ValueError("Ek ayarlar geçersiz.")
         self.extras.update({key:extras[key] for key in self.extras if key in extras})
+        gemini = self.extras["gemini"]
+        if (not isinstance(gemini, dict) or set(gemini) != {"consent","memory","instructions","model"}
+                or any(type(gemini[k]) is not bool for k in ("consent","memory","instructions"))
+                or not isinstance(gemini["model"], str) or len(gemini["model"]) > 120
+                or (gemini["model"] and not MODEL.fullmatch(gemini["model"]))):
+            raise ValueError("Gemini tercihleri geçersiz.")
         for prompt in self.extras["prompts"].values():
             check_text(prompt["name"],64)
             check_text(prompt["text"],2500)
@@ -132,6 +139,11 @@ class EonService:
                     for k,v in cloud.items()):
                 raise ValueError("Sağlayıcı kaydı geçersiz.")
             self.cloud_chats = cloud
+            if self.extras["gemini"]["consent"]:
+                self.cloud_allowed.update(cloud)
+                self.cloud_sharing.update({key:(self.extras["gemini"]["memory"],
+                                                  self.extras["gemini"]["instructions"])
+                                           for key in cloud})
             self.weather_pref = data["weather"]
             self.metrics = data.get("metrics", {})
             self.icons = data.get("icons", {})
@@ -173,8 +185,8 @@ class EonService:
                             "cloud_chats","weather_pref","metrics","icons","extras"):
                     setattr(self, key, getattr(candidate, key))
                 self.legacy_backup = False
-                self.cloud_allowed.clear()
-                self.cloud_sharing.clear()
+                self.cloud_allowed = set(candidate.cloud_allowed)
+                self.cloud_sharing = dict(candidate.cloud_sharing)
                 self.undo.clear()
                 return self.snapshot()
             except OSError:
@@ -216,7 +228,11 @@ class EonService:
                 models = Gemini(secret(self.secret_path)).models()
                 with self._lock:
                     self.cloud_models = models
-                return {"models":models}
+                    saved = self.extras["gemini"]["model"]
+                    selected = saved if saved in models else next((m for m in models if "flash" in m.casefold()), models[0])
+                    self.extras["gemini"]["model"] = selected
+                    self._save()
+                return {"models":models,"selected":selected}
             elif action == "sample" and consent is True and model in self.cloud_models:
                 parts = []
                 Gemini(secret(self.secret_path), model, 128).stream(
@@ -230,11 +246,25 @@ class EonService:
             with self._lock:
                 self.cloud_allowed.clear()
                 self.cloud_sharing.clear()
+                self.extras["gemini"].update(consent=False, memory=False, instructions=False, model="")
                 for job in self.jobs.values():
                     if job.chat_id in self.cloud_chats:
                         job.cancel()
                 self.cloud_models = []
-            return {"configured": bool(secret(self.secret_path))}
+                self._save()
+            configured = bool(secret(self.secret_path))
+            if action == "enter" and configured:
+                # Key entry is an explicit setup action; discover models without sending chat data.
+                models = Gemini(secret(self.secret_path)).models()
+                with self._lock:
+                    self.cloud_models = models
+                    saved = self.extras["gemini"]["model"]
+                    selected = saved if saved in models else next(
+                        (name for name in models if "flash" in name.casefold()), models[0])
+                    self.extras["gemini"]["model"] = selected
+                    self._save()
+                return {"configured":True,"models":models,"selected":selected}
+            return {"configured": configured}
 
     def compare(self, model, consent):
         if consent is not True or model not in self.cloud_models:
@@ -263,8 +293,18 @@ class EonService:
 
     def cloud_chat(self, model, ident, consent, memory=False, instructions=False):
         with self._lock:
-            if consent is not True or model not in self.cloud_models:
+            prefs = self.extras["gemini"]
+            if (model not in self.cloud_models or
+                    (consent is not True and not prefs["consent"])):
                 raise ValueError("Bağlantıyı test et, modeli seç ve veri aktarımını onayla.")
+            if consent is True:
+                if self.vault:
+                    prefs.update(consent=True, memory=memory is True, instructions=instructions is True)
+                else:
+                    memory, instructions = memory is True, instructions is True
+            else:
+                memory, instructions = prefs["memory"], prefs["instructions"]
+            prefs["model"] = model
             if ident:
                 if self.cloud_chats.get(ident) != model:
                     raise ValueError("Yerel sohbet buluta aktarılamaz.")
@@ -274,6 +314,25 @@ class EonService:
                 self.cloud_chats[ident] = model
             self.cloud_allowed.add(ident)
             self.cloud_sharing[ident] = (memory is True, instructions is True)
+            self._save()
+            return self.snapshot()
+
+    def cloud_privacy(self, enabled):
+        if type(enabled) is not bool:
+            raise ValueError("Bulut gizlilik tercihi geçersiz.")
+        with self._lock:
+            prefs = self.extras["gemini"]
+            prefs["consent"] = enabled
+            if enabled:
+                for ident in self.cloud_chats:
+                    self.cloud_allowed.add(ident)
+                    self.cloud_sharing[ident] = (prefs["memory"], prefs["instructions"])
+            else:
+                self.cloud_allowed.clear()
+                self.cloud_sharing.clear()
+                for job in self.jobs.values():
+                    if job.chat_id in self.cloud_chats:
+                        job.cancel()
             self._save()
             return self.snapshot()
 
@@ -541,10 +600,12 @@ class EonService:
             item = self.chats._items[self.chats.active_id]
             ident = self.chats.active_id
             return {"extras":self.extras, "undo_available":ident in self.undo, "cloud_model":self.cloud_chats.get(ident), "cloud_allowed":ident in self.cloud_allowed,
+                    "gemini_preferences":dict(self.extras["gemini"]), "gemini_models_ready":bool(self.cloud_models),
+                    "gemini_consent_persistent":bool(self.vault),
                     "metrics":self.metrics.get(ident, {}), "keep_alive":self.settings.keep_alive,
                     "weather_pref":dict(self.weather_pref), "projects": self.workspace.projects.copy(), "modes": self.workspace.modes(),
                     "look": self.workspace.look.copy(), "stars": item["stars"][:], "revision": item["revision"],
-                    "version": "0.4.0", "history": history,
+                    "version": "0.4.1", "history": history,
                     "conversations": self.chats.list(),
                     "active_chat_id": self.chats.active_id,
                     "style": self.style, "model": self.settings.model,
@@ -651,6 +712,7 @@ class EonService:
                 project = self.extras["projects"].get(item["project"],{})
                 style = choices.get("style") or self.style
                 settings = self.settings
+                cloud_output = {"kisa":512,"normal":2048,"detayli":4096}[style] if cloud else settings.output_tokens
                 if choices.get("style"):
                     settings = replace(settings, output_tokens=min(OUTPUT_LIMITS[style],settings.context_tokens//2))
                 preferred = choices.get("model") or project.get("model")
@@ -661,14 +723,25 @@ class EonService:
                 messages = target.messages_for(text, style)
                 prompt, user = messages[0], messages[-1]
                 if cloud:
-                    prompt["content"] = "Sen EON asistanısın. Kullanıcının dilinde yanıtla. " + STYLE_GUIDANCE[style]
+                    prompt["content"] = GEMINI_SYSTEM_PROMPT + " " + STYLE_GUIDANCE[style]
+                    mode = project.get("mode") if item["mode"] == "general" else ""
+                    prompt["content"] += "\n" + self.workspace.guidance({**item,"mode":mode if mode in self.workspace.modes() else item["mode"]})
                 else:
                     mode = project.get("mode") if item["mode"] == "general" else ""
                     prompt["content"] += "\n" + self.workspace.guidance({**item,"mode":mode if mode in self.workspace.modes() else item["mode"]})
                 share_notes, share_instructions = self.cloud_sharing.get(ident, (False, False))
+                if cloud and item["project"]:
+                    project_notes = self.extras["projects"].get(item["project"], {}).get("notes", [])
+                    if share_notes:
+                        notes_source = [self.memory[k] for k in project_notes if k in self.memory]
+                    else:
+                        notes_source = ()
+                elif cloud and not share_notes:
+                    notes_source = ()
                 if self.instructions and (not cloud or share_instructions):
                     prompt["content"] += "\nKullanıcı tercihi: " + self.instructions
-                budget = max(0, (settings.context_tokens - settings.output_tokens) * 2
+                context_tokens = max(settings.context_tokens, cloud_output + 2048) if cloud else settings.context_tokens
+                budget = max(0, (context_tokens - cloud_output) * 2
                              - len(prompt["content"].encode()) - len(user["content"].encode()) - 128)
                 notes = []
                 notes_source = self.memory.values()
@@ -702,7 +775,7 @@ class EonService:
                     context.append({"role": "user", "content": "Önceki mesajlarımdan alıntılar: " +
                                     " / ".join(reversed(earlier))})
                 messages = [prompt, *context, *history[start:end], user]
-                provider: StreamingProvider = Gemini(secret(self.secret_path), cloud, settings.output_tokens) if cloud else self.provider_factory(settings)
+                provider: StreamingProvider = Gemini(secret(self.secret_path), cloud, cloud_output) if cloud else self.provider_factory(settings)
                 model_used = cloud or settings.model
             job.check()
             if emit or cloud:

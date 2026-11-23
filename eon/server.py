@@ -95,7 +95,7 @@ class EonHandler(BaseHTTPRequestHandler):
                                     "models": self.server.service.models(),
                                     "apps": self.server.service.apps()})
         if path == "/api/health":
-            return self._json(200, {"status": "ok", "version": "0.4.0"})
+            return self._json(200, {"status": "ok", "version": "0.4.1"})
         if path == "/api/state":
             return self._json(200, self.server.service.snapshot())
         if path == "/api/models":
@@ -173,6 +173,8 @@ class EonHandler(BaseHTTPRequestHandler):
             elif route == "/api/cloud/new":
                 result = service.cloud_chat(payload.get("model"), payload.get("id"), payload.get("consent"),
                                             payload.get("memory"), payload.get("instructions"))
+            elif route == "/api/cloud/privacy":
+                result = service.cloud_privacy(payload.get("enabled"))
             elif route == "/api/compare":
                 result = service.compare(payload.get("model"),payload.get("consent"))
             elif route == "/api/apps/windows-icon":

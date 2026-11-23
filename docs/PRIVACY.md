@@ -11,3 +11,8 @@ Windows’ta sohbet ve tercih kasası `%LOCALAPPDATA%\EON\library.dpapi`, Google
 Uygulama yolları yerel başlatıcı ayarlarında bulunur. Özel simgeler piksele dönüştürülüp sohbet kasasına kaydedilir. Pano yalnız düğmeye basıldığında okunur. Markdown ve TXT indirmeleri şifresizdir.
 
 Hava durumu kurulumunda şehir seçimi çevrimdışıdır. Kullanıcı izin verip güncel veriyi istediğinde seçtiği koordinatlar Open-Meteo’ya gönderilir. Tercih kasada saklanır. İzni kapatmak kayıtlı konumu kaldırır. EON arka planda konum aramaz.
+
+
+## Gemini aktarım izni v0.4.1
+
+Gemini sohbetleri için kalıcı bulut izni, model konuşma bağlamını kullanabilmeden önce açıkça istenir ve DPAPI sohbet kasasında saklanır. Genel hafıza ve özel yönergeler ayrı seçimlerdir. Projeye bağlı sohbetlerde yalnız o projenin yönergeleri ve seçilmiş notları kullanılabilir; başka projelerin içerikleri gönderilmez. İzin Ayarlar ekranından kapatılabilir. v0.4.0 kasaları paylaşımı etkinleştirmeden açılır.
