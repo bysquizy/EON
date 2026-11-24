@@ -183,7 +183,10 @@ class Release060Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.s.volume_action({"action": "mute", "muted": "invalid"})
         if os.name == "nt":
-            st = self.s.volume_action({"action": "get"})
+            # Hosted Windows runners may not expose an active audio endpoint.
+            # Keep this a service-routing test instead of depending on runner hardware.
+            with patch("eon.service.audio.get_state", return_value={"supported": True, "level": 50, "muted": False}):
+                st = self.s.volume_action({"action": "get"})
             self.assertTrue(st["supported"])
             self.assertTrue(0 <= st["level"] <= 100)
 
@@ -269,26 +272,29 @@ class Release060Tests(unittest.TestCase):
             p = Path(tmp) / "library.dpapi"
             svc = EonService(provider_factory=FakeProvider, launcher=Mock(), vault_path=p)
             try:
-                from eon.credentials import secret
-                secret(svc.secret_path, "synthetic-tts-key")
-                with patch("eon.service.Gemini") as mock_g:
-                    mock_g.return_value.synthesize.return_value = synth
-                    res_online = svc.voice_action({"action": "speak", "text": "Test stüdyo ses", "voice": "Kore"})
-                    self.assertEqual(res_online["engine"], "gemini_studio_tts")
-                    self.assertEqual(res_online["audio_base64"], wav_b64)
-                svc.runtime_action("offline", True)
-                res_offline = svc.voice_action({"action": "speak", "text": "Test çevrimdışı", "voice": "Kore"})
-                self.assertEqual(res_offline["engine"], "browser_natural")
+                # Use a disposable fixture and mock the DPAPI boundary. Linux CI
+                # cannot exercise Windows credential encryption itself.
+                svc.secret_path.parent.mkdir(parents=True, exist_ok=True)
+                svc.secret_path.write_bytes(b"synthetic encrypted credential fixture")
+                with patch("eon.service.secret", return_value="synthetic-tts-key"):
+                    with patch("eon.service.Gemini") as mock_g:
+                        mock_g.return_value.synthesize.return_value = synth
+                        res_online = svc.voice_action({"action": "speak", "text": "Test stüdyo ses", "voice": "Kore"})
+                        self.assertEqual(res_online["engine"], "gemini_studio_tts")
+                        self.assertEqual(res_online["audio_base64"], wav_b64)
+                    svc.runtime_action("offline", True)
+                    res_offline = svc.voice_action({"action": "speak", "text": "Test çevrimdışı", "voice": "Kore"})
+                    self.assertEqual(res_offline["engine"], "browser_natural")
 
-                # 3. Auto-memory suggestion
-                sugg = svc._detect_memory_suggestion("Tercihim: Kodları her zaman Python 3.13 ile yaz")
-                self.assertIsNotNone(sugg)
+                    # 3. Auto-memory suggestion
+                    sugg = svc._detect_memory_suggestion("Tercihim: Kodları her zaman Python 3.13 ile yaz")
+                    self.assertIsNotNone(sugg)
 
-                # 4. Wipe all resets vault & memory cleanly
-                svc.memory_edit("", "silinecek not")
-                svc.runtime_action("wipe_all")
-                self.assertFalse(svc.memory)
-                self.assertFalse(svc.secret_path.exists())
+                    # 4. Wipe all resets vault & memory cleanly
+                    svc.memory_edit("", "silinecek not")
+                    svc.runtime_action("wipe_all")
+                    self.assertFalse(svc.memory)
+                    self.assertFalse(svc.secret_path.exists())
             finally:
                 if svc.vault:
                     svc.vault.close()
