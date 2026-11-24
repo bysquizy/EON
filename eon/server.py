@@ -60,12 +60,12 @@ class EonHandler(BaseHTTPRequestHandler):
             self.send_header("Connection", "close")
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Permissions-Policy", "geolocation=(), camera=(), microphone=(), clipboard-read=(self), clipboard-write=(self)")
+        self.send_header("Permissions-Policy", "geolocation=(), camera=(), microphone=(self), clipboard-read=(self), clipboard-write=(self)")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
-        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'none'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'")
         self.end_headers()
 
     def _json(self, status: int, value: dict) -> None:
@@ -244,9 +244,10 @@ class EonHandler(BaseHTTPRequestHandler):
             elif route == "/api/chats/rename":
                 result = service.rename(payload.get("id"), payload.get("title"))
             elif route == "/api/message":
-                if service.cloud_chats.get(service.chats.active_id):
+                raw_text = payload.get("text", "")
+                if service.cloud_chats.get(service.chats.active_id) and not (isinstance(raw_text, str) and raw_text.strip().startswith("/")):
                     raise ValueError("Gemini için sohbetin akışlı Gönder düğmesini kullan.")
-                result = service.send(payload.get("text", ""))
+                result = service.send(raw_text)
             elif route == "/api/regenerate":
                 result = service.generate(destination="ollama")
             elif route == "/api/chats/new":

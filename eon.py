@@ -1,4 +1,4 @@
-"""EON v0.6.1 — local desktop-style interface, or optional terminal mode."""
+"""EON v0.6.2 — local desktop-style interface, or optional terminal mode."""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,7 @@ import webbrowser
 
 
 def run_cli(service: EonService) -> int:
-    print("EON v0.6.1 — Yerel CLI · /yardim ile komutları gör")
+    print("EON v0.6.2 — Yerel CLI · /yardim ile komutları gör")
     while True:
         try:
             text = input("Sen > ").strip()
@@ -36,10 +36,44 @@ def open_app_window(url: str, *, prefer_app_window: bool = True) -> bool:
             if base:
                 candidates.append(os.path.join(base, "Microsoft", "Edge", "Application", "msedge.exe"))
                 candidates.append(os.path.join(base, "Google", "Chrome", "Application", "chrome.exe"))
+        try:
+            import winreg
+            for sub in (r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe",
+                        r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe"):
+                for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+                    try:
+                        with winreg.OpenKey(root, sub) as k:
+                            val, _ = winreg.QueryValueEx(k, "")
+                            if isinstance(val, str) and val.strip():
+                                candidates.append(val.strip().strip('"'))
+                    except OSError:
+                        pass
+        except ImportError:
+            pass
+        profile_dir = os.path.join(
+            os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"),
+            "EON",
+            "AppWindow",
+        )
+        try:
+            os.makedirs(profile_dir, exist_ok=True)
+        except OSError:
+            profile_dir = ""
         for exe in candidates:
             if os.path.isfile(exe):
+                cmd = [
+                    exe,
+                    f"--app={url}",
+                    "--new-window",
+                    "--window-size=1340,860",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    "--disable-features=Translate,EdgeSidebar",
+                ]
+                if profile_dir:
+                    cmd.append(f"--user-data-dir={profile_dir}")
                 try:
-                    subprocess.Popen([exe, f"--app={url}"], shell=False, close_fds=True)
+                    subprocess.Popen(cmd, shell=False, close_fds=True)
                     return True
                 except OSError:
                     pass
@@ -58,7 +92,7 @@ def start_tray_controller(url: str, service: EonService, server) -> object | Non
         "Add-Type -AssemblyName System.Windows.Forms,System.Drawing;"
         "$n=New-Object System.Windows.Forms.NotifyIcon;"
         "$n.Icon=[System.Drawing.SystemIcons]::Application;"
-        "$n.Text='EON v0.6.1 — Kisisel AI Calisma Ortami';"
+        "$n.Text='EON v0.6.2 — Kisisel AI Calisma Ortami';"
         "$n.Visible=$true;"
         "$m=New-Object System.Windows.Forms.ContextMenuStrip;"
         "$open=$m.Items.Add('EON Calisma Ortamini Ac');"
@@ -157,7 +191,7 @@ def main() -> int:
         if args.tray:
             tray_proc = start_tray_controller(url, service, server)
         if not args.silent:
-            print("EON v0.6.1 hazır. Yerel adres:", server.origin)
+            print("EON v0.6.2 hazır. Yerel adres:", server.origin)
             print("Oturum anahtarı bağlantı parçasında saklanır ve konsola yazdırılmaz.")
             print("Kapatmak için Ctrl+C. Ollama yalnız yerel model seçilince kullanılır.")
         if not args.no_browser and not open_app_window(url, prefer_app_window=not args.tab) and args.silent:

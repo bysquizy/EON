@@ -105,6 +105,53 @@ function markdown(root, text) {
 
 async function streamAnswer(text, index = null) {
   if (busy) return;
+  if (state) {
+    const selectedUiModel = el('modelSelect')?.value || '';
+    if (selectedUiModel.startsWith('models/gemini-') && state.cloud_model !== selectedUiModel) {
+      if (!state.gemini_configured && !state.gemini_models_ready) {
+        showPage('settings');
+        el('directApiKeyInput')?.focus();
+        toast('Gemini ile sohbet etmek için Google Gemini API anahtarını kaydet.');
+        return;
+      }
+      try {
+        renderState(await request('/api/cloud/new', {
+          id: state.history?.length ? null : state.active_chat_id,
+          model: selectedUiModel,
+          consent: true,
+        }));
+      } catch (err) {
+        toast(err.message);
+        return;
+      }
+    } else if (state.cloud_model && !state.cloud_allowed) {
+      if (!state.gemini_configured && !state.gemini_models_ready) {
+        showPage('settings');
+        el('directApiKeyInput')?.focus();
+        toast('Gemini ile sohbet etmek için Google Gemini API anahtarını kaydet.');
+        return;
+      }
+      try {
+        renderState(await request('/api/cloud/new', {
+          id: state.active_chat_id,
+          model: state.cloud_model,
+          consent: true,
+        }));
+      } catch (err) {
+        toast(err.message);
+        return;
+      }
+    } else if (!state.cloud_model && !installedModels.length && (state.gemini_configured || state.gemini_models_ready)) {
+      const targetGem = state.gemini_preferences?.model || 'models/gemini-3.8-flash';
+      try {
+        renderState(await request('/api/cloud/new', {
+          id: state.history?.length ? null : state.active_chat_id,
+          model: targetGem,
+          consent: true,
+        }));
+      } catch {}
+    }
+  }
   const id = state.active_chat_id;
   const key = crypto.randomUUID();
   const status = showPendingMessage(text ?? state.history.at(-2)?.content ?? '');
@@ -128,6 +175,13 @@ async function streamAnswer(text, index = null) {
     const imagesToSend = pendingVisionImages.map(img => ({mime: img.mime, data: img.data}));
     pendingVisionImages = [];
     if (typeof renderVisionBar === 'function') renderVisionBar();
+    const liveOverlayOpen = !el('liveVoiceOverlay')?.classList.contains('hidden');
+    const liveVoice = liveOverlayOpen || el('liveVoiceToggle')?.getAttribute('aria-pressed') === 'true';
+    if (liveVoice && typeof stopVoicePlayback === 'function') stopVoicePlayback();
+    if (liveOverlayOpen && typeof setLiveVoiceUiState === 'function') {
+      setLiveVoiceUiState('thinking', 'Düşünüyor…', text ? `“${text}”` : '');
+      if (el('liveVoiceReplyText')) el('liveVoiceReplyText').textContent = '';
+    }
     const response = await fetch('/api/stream', {method:'POST',
       headers:{'Content-Type':'application/json','X-EON-Token':csrfToken,'X-EON-Access':sessionAccess},
       body:JSON.stringify({key, id, text, index, destination:state.cloud_model || "ollama",
@@ -138,8 +192,7 @@ async function streamAnswer(text, index = null) {
 
     try {
       let sentenceBuf = '';
-      const liveVoice = el('liveVoiceToggle')?.getAttribute('aria-pressed') === 'true';
-      if (liveVoice && typeof stopVoicePlayback === 'function') stopVoicePlayback();
+      let liveFullReply = '';
       while (true) {
         const {value, done} = await reader.read();
         if (done) break;
@@ -154,8 +207,12 @@ async function streamAnswer(text, index = null) {
             queuedText += event.delta;
             if (!frame) frame = requestAnimationFrame(flush);
             if (liveVoice && typeof enqueueLiveSentence === 'function') {
+              liveFullReply += event.delta;
+              if (liveOverlayOpen && el('liveVoiceReplyText')) {
+                el('liveVoiceReplyText').textContent = liveFullReply;
+              }
               sentenceBuf += event.delta;
-              const match = /^([\s\S]{18,}?[.!?…]+(?:\s+|\n|$))([\s\S]*)$/.exec(sentenceBuf);
+              const match = /^([\s\S]{14,}?[.!?…:]+(?:\s+|\n|$))([\s\S]*)$/.exec(sentenceBuf);
               if (match) {
                 enqueueLiveSentence(match[1].trim());
                 sentenceBuf = match[2];
@@ -177,7 +234,11 @@ async function streamAnswer(text, index = null) {
   } catch (error) {
     if (text && state.active_chat_id === id && !el('messageInput').value) el('messageInput').value = text;
     if (error instanceof TypeError) setConnectionLost(true);
-    toast(error instanceof TypeError ? 'Yerel sunucuya ulaşılamadı. Yeniden bağlanmayı dene.' : error.message);
+    const errMsg = error instanceof TypeError ? 'Yerel sunucuya ulaşılamadı. Yeniden bağlanmayı dene.' : error.message;
+    if (!el('liveVoiceOverlay')?.classList.contains('hidden') && typeof setLiveVoiceUiState === 'function') {
+      setLiveVoiceUiState('idle', 'Yanıt Alınamadı', errMsg);
+    }
+    toast(errMsg);
   } finally {
     cancelAnimationFrame(frame);
     activeStream = null;
@@ -188,6 +249,7 @@ async function streamAnswer(text, index = null) {
     const preserve = log.scrollHeight - top - log.clientHeight > 120;
     renderChat();
     if (preserve) log.scrollTop = top;
+    if (typeof notifyLiveStreamFinished === 'function') notifyLiveStreamFinished();
   }
 }
 

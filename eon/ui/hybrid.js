@@ -7,6 +7,70 @@ const cities = [
   ['İzmir',38.424,27.143],['Konya',37.872,32.485],['Londra',51.507,-0.128],['Trabzon',41.002,39.717]
 ];
 let weatherLoaded = false, weatherEpoch = 0;
+const CURATED_GEMINI_MODELS = [
+  ['models/gemini-3.8-flash', 'Gemini 3.8 Flash'],
+  ['models/gemini-4.0-helium', 'Gemini 4.0 Helium'],
+  ['models/gemini-3.8-pro', 'Gemini 3.8 Pro'],
+  ['models/gemini-2.5-flash', 'Gemini 2.5 Flash'],
+  ['models/gemini-2.5-pro', 'Gemini 2.5 Pro'],
+];
+
+function formatGeminiModelLabel(id) {
+  const short = String(id || '').replace(/^models\//, '');
+  const match = CURATED_GEMINI_MODELS.find(([k]) => k === id || k.endsWith(short));
+  if (match) return match[1];
+  return 'Gemini · ' + short;
+}
+
+function getAvailableGeminiEntries() {
+  const raw = Array.isArray(state?.cloud_models) && state.cloud_models.length
+    ? state.cloud_models
+    : CURATED_GEMINI_MODELS.map(([k]) => k);
+  const seen = new Set();
+  const entries = [];
+  for (const id of raw) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      entries.push([id, formatGeminiModelLabel(id)]);
+    }
+  }
+  return entries;
+}
+
+function syncUnifiedModelSelect() {
+  const sel = el('modelSelect');
+  if (!sel || !state) return;
+  const chat = currentChat();
+  const chatOpts = state.extras?.chat_options?.[chat?.id] || {};
+  const projOpts = state.extras?.projects?.[chat?.project] || {};
+  const local = chatOpts.model || projOpts.model || state.model;
+  const activeVal = state.cloud_model || local || 'models/gemini-3.8-flash';
+  sel.replaceChildren();
+  sel.hidden = false;
+  sel.disabled = false;
+
+  const geminiGroup = document.createElement('optgroup');
+  geminiGroup.label = 'Google Gemini (Önerilen)';
+  for (const [val, label] of getAvailableGeminiEntries()) {
+    geminiGroup.appendChild(new Option(label, val));
+  }
+  sel.appendChild(geminiGroup);
+
+  if (installedModels.length) {
+    const localGroup = document.createElement('optgroup');
+    localGroup.label = 'Yerel Ollama';
+    for (const m of installedModels) {
+      localGroup.appendChild(new Option('Yerel · ' + m, m));
+    }
+    sel.appendChild(localGroup);
+  }
+  if ([...sel.options].some(o => o.value === activeVal)) {
+    sel.value = activeVal;
+  } else if (sel.options.length) {
+    sel.selectedIndex = 0;
+  }
+}
+
 function renderHybrid() {
   const metrics = state.metrics || {};
   const chat = currentChat();
@@ -16,16 +80,19 @@ function renderHybrid() {
   const activeProfile = chatOpts.profile || projOpts.profile || 'balanced';
   const profileLabel = state.profiles?.[activeProfile]?.name || 'Dengeli';
   const tokLabel = metrics.measured_tokens && metrics.output_tokens != null
-    ? `${metrics.output_tokens} tok (gerçek)`
-    : metrics.context_estimate != null ? `~${metrics.context_estimate} tok (tahmin)` : '';
-  el('providerBadge').textContent = (state.cloud_model ? 'Google Gemini · '+state.cloud_model.replace('models/','') : 'Ollama · '+local)
+    ? `${metrics.output_tokens} tok`
+    : '';
+  const modelLabel = state.cloud_model
+    ? formatGeminiModelLabel(state.cloud_model)
+    : 'Yerel · ' + local;
+  el('providerBadge').textContent = modelLabel
     + ' · ' + profileLabel
-    + (metrics.seconds != null ? ' · '+metrics.seconds+' sn' : '')
-    + (tokLabel ? ' · '+tokLabel : '');
+    + (metrics.seconds != null ? ' · ' + metrics.seconds + ' sn' : '')
+    + (tokLabel ? ' · ' + tokLabel : '');
   el('providerBadge').title = metrics.time ? new Date(metrics.time*1000).toLocaleString()+
-    ' · '+metrics.model+' · İlk token '+(metrics.first ?? '—')+' sn · '+(metrics.rate ?? '—')+' token/sn · '+
-    (metrics.measured_tokens ? `Girdi: ${metrics.input_tokens ?? '—'}, Çıktı: ${metrics.output_tokens ?? '—'} (gerçek ölçüm)` : `Yaklaşık bağlam: ${metrics.context_estimate ?? '—'} token (tahmin)`) : '';
-  el('modelSelect').hidden = !!state.cloud_model;
+    ' · '+metrics.model+' · İlk token '+(metrics.first ?? '—')+' sn · '+
+    (metrics.measured_tokens ? `Girdi: ${metrics.input_tokens ?? '—'}, Çıktı: ${metrics.output_tokens ?? '—'}` : `Yaklaşık bağlam: ${metrics.context_estimate ?? '—'} token`) : '';
+  syncUnifiedModelSelect();
   if (el('profileSelect')) el('profileSelect').value = activeProfile;
   const resBtn = el('researchToggle');
   if (resBtn) {
@@ -35,32 +102,34 @@ function renderHybrid() {
   }
   const pBadge = el('privacySidebarBadge');
   if (pBadge) {
-    pBadge.firstChild.textContent = state.cloud_model && state.cloud_allowed ? 'HYBRID' : 'LOCAL';
-    pBadge.title = state.cloud_model && state.cloud_allowed ? 'Bu sohbette onaylı Gemini bulut bağlantısı etkin' : 'Tam yerel çalışma modu';
+    pBadge.firstChild.textContent = state.cloud_model && state.cloud_allowed ? 'GEMINI' : 'LOCAL';
+    pBadge.title = state.cloud_model && state.cloud_allowed ? 'Google Gemini bulut bağlantısı etkin' : 'Tam yerel çalışma modu';
   }
-  if (!disconnected) el('connectionText').textContent = state.cloud_model
-    ? 'Gemini · '+(state.cloud_allowed ? 'onaylı' : 'onay bekliyor')
-    : installedModels.length ? 'Yerel model hazır' : 'Yerel model bekleniyor';
+  if (!disconnected) {
+    el('connection').classList.toggle('connected', Boolean((state.cloud_model && state.cloud_allowed) || installedModels.length));
+    el('connectionText').textContent = state.cloud_model
+      ? (state.cloud_allowed ? formatGeminiModelLabel(state.cloud_model) : 'Gemini · anahtar bekleniyor')
+      : installedModels.length ? 'Yerel model hazır' : 'Hazır';
+  }
   el('keepAlive').value = state.keep_alive;
   const geminiPrefs = state.gemini_preferences || {consent:false,memory:false,instructions:false,model:''};
-  if (geminiPrefs.model && !el('cloudModel').options.length) {
-    options(el('cloudModel'), [[geminiPrefs.model, geminiPrefs.model.slice(7)]], geminiPrefs.model);
-  }
+  const gemEntries = getAvailableGeminiEntries();
+  const preferredGem = geminiPrefs.model || state.cloud_model || 'models/gemini-3.8-flash';
+  options(el('cloudModel'), gemEntries, preferredGem);
   el('shareMemory').checked = geminiPrefs.memory;
   el('sharePrefs').checked = geminiPrefs.instructions;
   el('cloudPrivacyOff').hidden = !geminiPrefs.consent;
+  const pref = state.weather_pref || {enabled:false};
+  if (el('forecast')) {
+    el('forecast').hidden = !pref.enabled;
+    if (pref.enabled) el('forecast').textContent = pref.last || 'Hava durumu';
+  }
   if (!weatherLoaded) {
     weatherLoaded = true;
-    const pref = state.weather_pref;
-    el('weatherConsent').checked = pref.enabled;
+    el('weatherConsent').checked = Boolean(pref.enabled);
     el('weatherRead').disabled = !pref.enabled;
     el('lat').value = pref.lat ?? '';
     el('lon').value = pref.lon ?? '';
-    if (pref.enabled) el('forecast').textContent = pref.last ? 'Eski veri · '+pref.last : 'Hava durumu · güncelleme bekleniyor';
-    if (!pref.asked) {
-      const panel = el('weatherWelcome');
-      panel.hidden = false;
-    }
   }
 }
 function wireHybrid() {
@@ -156,17 +225,13 @@ function wireHybrid() {
       el('lat').value=lat; el('lon').value=lon;
     }
   };
-  const panel=document.createElement('div');
-  panel.id='weatherWelcome'; panel.hidden=true;
-  panel.append('Hava durumunu göstermek ister misin? ', action('Evet',()=>{
-    panel.hidden=true; showPage('settings'); el('city').focus();
-  }),action('Şimdi değil', async()=>{await saveWeather(false);panel.hidden=true;}));
-  el('welcome').append(panel);
   async function saveWeather(enabled) {
     renderState(await request('/api/weather/preferences',{enabled,lat:el('lat').valueAsNumber,lon:el('lon').valueAsNumber}));
-    panel.hidden=true;
     el('weatherRead').disabled=!enabled;
-    if(!enabled) el('forecast').textContent='Hava durumu kapalı';
+    if (el('forecast')) {
+      el('forecast').hidden = !enabled;
+      if(!enabled) el('forecast').textContent='';
+    }
   }
   el('weatherConsent').onchange=async()=>{
     weatherEpoch++;

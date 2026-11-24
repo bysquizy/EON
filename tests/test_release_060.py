@@ -183,12 +183,64 @@ class Release060Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.s.volume_action({"action": "mute", "muted": "invalid"})
         if os.name == "nt":
-            # Hosted Windows runners may not expose a physical audio endpoint.
-            # Mock the device boundary so this test remains hardware-independent.
-            with patch.object(audio, "get_state", return_value={"supported": True, "level": 50, "muted": False}):
-                st = self.s.volume_action({"action": "get"})
+            st = self.s.volume_action({"action": "get"})
             self.assertTrue(st["supported"])
             self.assertTrue(0 <= st["level"] <= 100)
+
+    def test_curated_gemini_models_defaults_and_voice_headers(self):
+        from eon.gemini import Gemini, curate_gemini_models, preferred_gemini_model
+        from eon.server import start_server
+        from eon.service import Generation
+        from urllib.request import urlopen
+
+        raw = [
+            "models/gemini-1.5-flash",
+            "models/gemini-2.0-flash-lite-001",
+            "models/gemini-2.5-flash-preview-tts",
+            "models/gemini-2.5-flash-image",
+            "models/gemini-embedding-001",
+            "models/gemini-2.5-flash",
+            "models/gemini-3.8-flash",
+            "models/gemini-4.0-helium",
+        ]
+        curated = curate_gemini_models(raw)
+        self.assertLessEqual(len(curated), 6)
+        self.assertEqual(curated[0], "models/gemini-3.8-flash")
+        self.assertEqual(curated[1], "models/gemini-4.0-helium")
+        self.assertNotIn("models/gemini-2.5-flash-preview-tts", curated)
+        self.assertNotIn("models/gemini-embedding-001", curated)
+        self.assertEqual(preferred_gemini_model(curated), "models/gemini-3.8-flash")
+        self.assertEqual(preferred_gemini_model(["models/gemini-4.0-helium", "models/gemini-2.5-flash"]), "models/gemini-4.0-helium")
+
+        # Verify SSE stream handles null content/parts and [DONE] without failing
+        conn = Mock()
+        sse_payload = (
+            b'data: {"candidates":[{"content":{"parts":[{"text":"d\xc3\xbc\xc5\x9f\xc3\xbcnce","thought":true}]}}]}\n'
+            b'data: {"candidates":[{"content":{"parts":[{"text":"Merhaba EON!"}]}}]}\n'
+            b'data: {"candidates":[{"content":null,"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":4}}\n'
+            b'data: [DONE]\n'
+        )
+        reply = io.BytesIO(sse_payload)
+        reply.status = 200
+        conn.getresponse.return_value = reply
+        client = Gemini("synthetic-key", "models/gemini-3.8-flash", factory=lambda *a, **kw: conn)
+        chunks = []
+        client.stream([{"role": "system", "content": "sys"}, {"role": "user", "content": "hi"}], chunks.append, Generation())
+        self.assertEqual("".join(chunks), "Merhaba EON!")
+
+        # Verify server headers allow microphone=(self) and media-src blob:
+        srv = start_server(service=self.s)
+        import threading
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        try:
+            with urlopen(srv.origin + "/api/health", timeout=3) as resp:
+                self.assertIn("microphone=(self)", resp.headers.get("Permissions-Policy", ""))
+                self.assertIn("media-src 'self' data: blob:", resp.headers.get("Content-Security-Policy", ""))
+        finally:
+            srv.shutdown()
+            srv.server_close()
+            t.join(timeout=3)
 
 
 if __name__ == "__main__":

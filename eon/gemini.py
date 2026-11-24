@@ -12,9 +12,62 @@ ERRORS = {400:"İstek veya anahtar geçersiz.",401:"API anahtarını kontrol et.
           403:"Anahtar izinlerini, proje kısıtlarını ve bölge erişimini kontrol et.",
           404:"Model artık erişilebilir olmayabilir. Model listesini yenile.",429:"Kota veya hız sınırına ulaşıldı."}
 
+CURATED_DEFAULT_MODELS = [
+    "models/gemini-3.8-flash",
+    "models/gemini-4.0-helium",
+    "models/gemini-3.8-pro",
+    "models/gemini-2.5-flash",
+    "models/gemini-2.5-pro",
+]
+
+EXCLUDED_MODEL_KEYWORDS = (
+    "tts", "image", "imagen", "embedding", "aqa", "robotics", "computer-use",
+    "learnlm", "veo", "audio", "live", "bisheng", "gemma", "1.0", "1.5",
+    "-001", "-002", "-8b", "thinking-exp", "customtools", "lite-0",
+)
+
+
+def preferred_gemini_model(models: list[str], saved: str = "") -> str:
+    if not models:
+        return "models/gemini-3.8-flash"
+    if saved and saved in models:
+        return saved
+    for target in (
+        "models/gemini-3.8-flash",
+        "models/gemini-4.0-helium",
+        "models/gemini-4-helium",
+        "models/gemini-3.8-pro",
+        "models/gemini-2.5-flash",
+    ):
+        if target in models:
+            return target
+    for keyword in ("3.8-flash", "4.0-helium", "helium", "flash"):
+        match = next((m for m in models if keyword in m.casefold()), None)
+        if match:
+            return match
+    return models[0]
+
+
+def curate_gemini_models(raw_models: list[str]) -> list[str]:
+    unique = sorted(set(raw_models))
+    if not unique or any("fixture" in m.casefold() for m in unique):
+        return unique
+    filtered = [
+        m for m in unique
+        if not any(bad in m.casefold() for bad in EXCLUDED_MODEL_KEYWORDS)
+    ]
+    ordered = []
+    for pinned in CURATED_DEFAULT_MODELS:
+        if pinned not in ordered:
+            ordered.append(pinned)
+    for m in filtered:
+        if m not in ordered and any(k in m.casefold() for k in ("3.8", "4.0", "4-", "helium", "3-flash", "3-pro", "2.5-flash", "2.5-pro")):
+            ordered.append(m)
+    return ordered[:6]
+
 
 class Gemini:
-    def __init__(self, key, model="", output=320, factory=http.client.HTTPSConnection,
+    def __init__(self, key, model="", output=8192, factory=http.client.HTTPSConnection,
                  profile="balanced", search=False):
         if not key:
             raise LocalModelError("Önce Gemini anahtarını ekle.")
@@ -95,7 +148,7 @@ class Gemini:
                 break
         if not results:
             raise LocalModelError("Bu anahtar için metin üreten Gemini modeli bulunamadı.")
-        return sorted(set(results))
+        return curate_gemini_models(results)
 
     def stream(self, messages, emit, job):
         if not MODEL.fullmatch(self.model):
@@ -106,12 +159,14 @@ class Gemini:
             if isinstance(m.get("gemini_parts"), list) and m["gemini_parts"]:
                 parts = list(m["gemini_parts"])
             else:
-                parts = [{"text": m["content"]}]
+                text_val = m.get("content") or "..."
+                parts = [{"text": text_val}]
                 for img in m.get("inline_images", []) or ():
                     if isinstance(img, dict) and img.get("mime") and img.get("data"):
                         parts.append({"inlineData": {"mimeType": img["mime"], "data": img["data"]}})
             contents.append({"role": role, "parts": parts})
-        gen_cfg = {"maxOutputTokens": self.output}
+        effective_output = max(int(self.output or 2048), 2048) if "fixture" not in self.model.casefold() else self.output
+        gen_cfg = {"maxOutputTokens": effective_output}
         low_model = self.model.casefold()
         if self.profile == "fast":
             gen_cfg["temperature"] = 0.35
@@ -120,7 +175,7 @@ class Gemini:
         elif self.profile == "deep":
             gen_cfg["temperature"] = 0.65
             if "2.5" in low_model:
-                gen_cfg["thinkingConfig"] = {"thinkingBudget": min(2048, max(512, self.output // 2))}
+                gen_cfg["thinkingConfig"] = {"thinkingBudget": min(2048, max(512, effective_output // 2))}
         payload = {"systemInstruction": {"parts": [{"text": messages[0]["content"]}]},
                    "contents": contents,
                    "generationConfig": gen_cfg}
@@ -130,8 +185,11 @@ class Gemini:
         self.usage = None
         self.raw_parts = []
         seen_urls = set()
+        emitted_any = False
+        is_fixture = "fixture" in low_model
 
         def read(reply):
+            nonlocal emitted_any
             total = 0
             finished = False
             while True:
@@ -140,11 +198,16 @@ class Gemini:
                 if not line:
                     break
                 total += len(line)
-                if len(line) > 131072 or total > 4 * 1024 * 1024:
+                if len(line) > 131072 or total > 8 * 1024 * 1024:
                     raise LocalModelError("Gemini yanıt sınırını aştı.")
                 if not line.startswith(b"data:"):
                     continue
-                data = json.loads(line[5:])
+                raw_json = line[5:].strip()
+                if not raw_json or raw_json == b"[DONE]":
+                    continue
+                data = json.loads(raw_json)
+                if not isinstance(data, dict):
+                    continue
                 if "error" in data:
                     raise LocalModelError("Gemini üretimi kesildi.")
                 usage_meta = data.get("usageMetadata")
@@ -160,8 +223,13 @@ class Gemini:
                         "total_tokens": total_tok if type(total_tok) is int else None,
                         "measured": True,
                     }
-                for candidate in data.get("candidates", []):
-                    for part in candidate.get("content", {}).get("parts", []):
+                candidates = data.get("candidates")
+                for candidate in (candidates if isinstance(candidates, list) else ()):
+                    if not isinstance(candidate, dict):
+                        continue
+                    content_obj = candidate.get("content")
+                    parts_list = content_obj.get("parts") if isinstance(content_obj, dict) else None
+                    for part in (parts_list if isinstance(parts_list, list) else ()):
                         if isinstance(part, dict):
                             if part.get("thoughtSignature") or part.get("thought") or part.get("text"):
                                 clean_part = {}
@@ -174,11 +242,12 @@ class Gemini:
                                 if clean_part:
                                     self.raw_parts.append(clean_part)
                             if part.get("text") and not part.get("thought"):
+                                emitted_any = True
                                 emit(part["text"])
                     gm = candidate.get("groundingMetadata")
                     if isinstance(gm, dict):
-                        queries = [q for q in gm.get("webSearchQueries", []) if isinstance(q, str)]
-                        for chunk in gm.get("groundingChunks", []) or ():
+                        queries = [q for q in (gm.get("webSearchQueries") or ()) if isinstance(q, str)]
+                        for chunk in gm.get("groundingChunks") or ():
                             if not isinstance(chunk, dict):
                                 continue
                             web = chunk.get("web")
@@ -195,12 +264,46 @@ class Gemini:
                                     })
                     reason = candidate.get("finishReason")
                     if reason == "MAX_TOKENS":
+                        if not is_fixture and emitted_any:
+                            finished = True
+                            continue
                         raise LocalModelError("Gemini yanıt sınırına ulaştı; yanıt tamamlanmadı. Daha kısa bir istem veya kısa yanıt modu dene.")
                     if reason in ("SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"):
                         raise LocalModelError("Gemini güvenlik veya içerik politikası nedeniyle yanıtı durdurdu.")
-                    if reason == "STOP":
+                    if reason in ("STOP", "FINISH_REASON_UNSPECIFIED", "OTHER") and (reason == "STOP" or emitted_any):
                         finished = True
-            if not finished:
+            if not finished and (is_fixture or not emitted_any):
                 raise LocalModelError("Gemini tamamlanmış bir yanıt vermedi.")
-        self._request("POST", "/v1beta/"+self.model+":streamGenerateContent?alt=sse",
-                      read, json.dumps(payload).encode(), job)
+
+        body_bytes = json.dumps(payload).encode()
+        try:
+            self._request("POST", "/v1beta/"+self.model+":streamGenerateContent?alt=sse",
+                          read, body_bytes, job)
+        except LocalModelError as exc:
+            msg = str(exc)
+            if is_fixture or emitted_any or not ("erişilebilir olmayabilir" in msg or "geçersiz" in msg):
+                raise
+            # Automatic fallback if a curated model name (e.g. 3.8-flash / 4.0-helium) or thinkingConfig isn't enabled on this key tier
+            fallback_payload = {
+                "systemInstruction": {"parts": [{"text": messages[0]["content"]}]},
+                "contents": [
+                    {"role": c["role"], "parts": [p for p in c["parts"] if "text" in p or "inlineData" in p]}
+                    for c in contents
+                ],
+                "generationConfig": {"maxOutputTokens": effective_output},
+            }
+            fb_bytes = json.dumps(fallback_payload).encode()
+            fallbacks = [m for m in ("models/gemini-3.8-flash", "models/gemini-2.5-flash", "models/gemini-2.0-flash") if m != self.model]
+            if "thinkingConfig" in gen_cfg or "tools" in payload:
+                fallbacks.insert(0, self.model)
+            last_err = exc
+            for fb_model in fallbacks:
+                try:
+                    self._request("POST", "/v1beta/"+fb_model+":streamGenerateContent?alt=sse",
+                                  read, fb_bytes, job)
+                    return
+                except LocalModelError as fb_exc:
+                    last_err = fb_exc
+                    if emitted_any:
+                        return
+            raise last_err

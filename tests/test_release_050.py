@@ -336,7 +336,7 @@ class Release050Tests(unittest.TestCase):
     def test_command_center_health_and_privacy_redacted_metrics(self):
         self.s.send("Gizli kullanıcı sorusu SECRET_PROMPT_999")
         status = self.s.runtime_action("status")
-        self.assertEqual(status["version"], "0.6.1")
+        self.assertEqual(status["version"], "0.6.2")
         self.assertIn("system_memory", status)
         # Request log must NEVER contain prompt or assistant text
         log_dump = json.dumps(status["request_log"])

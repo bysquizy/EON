@@ -1,4 +1,4 @@
-/* EON v0.6.1 — Modular UI Extensions:
+/* EON v0.6.2 — Modular UI Extensions:
    - In-process Windows Core Audio Master Volume slider + instant mute
    - Gemini-first setup flow + hardware-tuned local Ollama model recommendations
    - Offline Kill-Switch & Network Inspector
@@ -66,6 +66,12 @@ function renderHardwareAndSetupBanner() {
   }
 
   let banner = el('welcomeSetupBanner');
+  const isGeminiReady = Boolean((state.cloud_model && state.cloud_allowed) || state.gemini_configured || state.gemini_models_ready);
+  const isOllamaReady = installedModels.length > 0;
+  if (isGeminiReady || isOllamaReady) {
+    if (banner) banner.remove();
+    return;
+  }
   if (!banner && el('welcome')) {
     banner = document.createElement('div');
     banner.id = 'welcomeSetupBanner';
@@ -74,24 +80,14 @@ function renderHardwareAndSetupBanner() {
   }
   if (banner) {
     banner.replaceChildren();
-    const isGeminiReady = Boolean(state.cloud_model && state.cloud_allowed);
-    const isOllamaReady = installedModels.length > 0;
     const recModel = hw?.models?.[0]?.name || 'qwen3:4b';
-    const title = document.createElement('strong');
-    title.textContent = isGeminiReady
-      ? `Google Gemini Öncelikli Mod Etkin (${state.cloud_model.replace('models/', '')})`
-      : 'Hızlı Başlangıç — Google Gemini API Öncelikli veya İsteğe Bağlı Yerel Ollama';
-    const desc = document.createElement('div');
-    desc.textContent = isGeminiReady
-      ? 'Sohbetlerin doğrudan Google Gemini ile çalışır; Ollama kurman gerekmez.'
-      : `1) Önerilen: Ollama kurmadan doğrudan Google Gemini API anahtarınla hemen başla.  2) İsteğe bağlı yerel model: Bilgisayarına (${hw?.ram_gb ?? '?'} GB RAM) uygun önerilen model: ${recModel} (${isOllamaReady ? 'Yerel model hazır' : 'Kurulu değil — isteğe bağlı'}).`;
-    const btnRow = document.createElement('div');
-    btnRow.className = 'button-row';
-    btnRow.append(
-      action('Google Gemini API Anahtarı Ayarla (Öncelikli)', () => { showPage('settings'); el('directApiKeyInput')?.focus(); }),
-      action(`Yerel Model Önerilerini Gör (${recModel})`, () => { showPage('settings'); el('hardwareRecommendationBox')?.scrollIntoView({block:'center'}); })
+    const label = document.createElement('span');
+    label.textContent = 'Hemen başlamak için:';
+    banner.append(
+      label,
+      action('Gemini API Anahtarı Ekle →', () => { showPage('settings'); el('directApiKeyInput')?.focus(); }),
+      action(`Yerel Model (${recModel})`, () => { showPage('settings'); el('hardwareRecommendationBox')?.scrollIntoView({block:'center'}); })
     );
-    banner.append(title, desc, btnRow);
   }
 }
 
@@ -111,12 +107,18 @@ function wireV060Modules() {
       try {
         el('directApiKeyInput').value = '';
         const result = await request('/api/credentials', {action:'set', key:keyVal});
-        await request('/api/setup', {action:'complete', provider:'gemini'});
-        if (result.models?.length) {
-          options(el('cloudModel'), result.models.map(m => [m, m.slice(7)]), result.selected);
-          state.gemini_models_ready = true;
+        if (result.state) {
+          renderState(result.state);
+        } else {
+          const st = await request('/api/setup', {action:'complete', provider:'gemini'});
+          renderState(st.state);
         }
-        toast(result.models?.length ? 'API anahtarı DPAPI kasasına şifrelendi ve Gemini modelleri hazır!' : 'API anahtarı şifrelenerek kaydedildi.');
+        if (result.models?.length) {
+          state.cloud_models = result.models;
+          state.gemini_models_ready = true;
+          if (typeof syncUnifiedModelSelect === 'function') syncUnifiedModelSelect();
+        }
+        toast('Google Gemini API anahtarı kaydedildi ve sohbet etkinleştirildi.');
       } catch (error) { toast(error.message); }
     };
   }
@@ -203,14 +205,7 @@ function wireV060Modules() {
       } catch (error) { toast(error.message); }
     };
   }
-}
-
-const _origRenderStateV061 = typeof renderState === 'function' ? renderState : null;
-if (_origRenderStateV061) {
-  window.renderState = function (next) {
-    _origRenderStateV061(next);
-    renderHardwareAndSetupBanner();
-  };
+  renderHardwareAndSetupBanner();
 }
 
 // Enhance renderVisionBar to include offline Windows OCR button on attached images

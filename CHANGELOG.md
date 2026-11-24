@@ -1,5 +1,12 @@
 # Değişiklikler
 
+## v0.6.2
+
+- **Gemini Akış & Düşünme (Thinking) Token Bütçesi Düzeltmesi:** `gemini-3.8-flash` ve `gemini-4.0-helium` modellerinde düşünme token'ları nedeniyle yanıtın yarım kalmasını önleyen yüksek çıktı bütçesi (`2560` / `8192` / `16384`), SSE `content: null` / `[DONE]` dayanıklılığı ve otomatik model yedekleme (fallback).
+- **Sadeleştirilmiş Birleşik Model Seçici:** Mesaj yazma çubuğunda `Gemini 3.8 Flash` (varsayılan), `Gemini 4.0 Helium`, `Gemini 3.8 Pro`, `Gemini 2.5 Flash`, `Gemini 2.5 Pro` ve kurulu yerel Ollama modellerini tek listede sunan birleşik model seçici.
+- **ChatGPT Tarzı Tam Ekran Canlı Sesli Konuşma (`Live Voice`):** `Permissions-Policy: microphone=(self)` ve `CSP: media-src 'self' data: blob:` düzeltmesi; animasyonlu ses küresi, canlı altyazı, söz kesme (barge-in) ve hızlı sesli yanıt girişi içeren tam ekran Canlı Ses arayüzü (`#liveVoiceOverlay`).
+- **Hizalanmış Masaüstü Arayüzü & Bağımsız Uygulama Penceresi:** Mesaj kutusundaki kaydırma çubuğu oklarını kaldıran piksel hizalı tasarım ve `127.0.0.1` adres çubuğu olmadan bağımsız masaüstü penceresinde (`--app --new-window --user-data-dir`) açılış.
+
 ## v0.6.1
 
 - **Otomatik Donanım Optimizasyonu & Anında Açılış:** RAM ve CPU çekirdek sayısına göre otomatik bağlam/bellek optimizasyonu (`eon/hardware.py`), tembel (lazy) uygulama keşfi ve engelsiz `/api/bootstrap` açılışı.

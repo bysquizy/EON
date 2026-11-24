@@ -74,9 +74,19 @@
   log.addEventListener('scroll', sync, {passive: true});
   down.onclick = () => log.scrollTo({top: log.scrollHeight, behavior: root.dataset.reduced === 'true' || matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'});
 
-  // Yazma alanı otomatik yükseklik
+  // Yazma alanı otomatik yükseklik (tek satırda kaydırma çubuğu oklarını gizler)
   const input = $('messageInput');
-  const fit = () => { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 160) + 'px'; };
+  const fit = () => {
+    if (!input.value) {
+      input.style.height = '24px';
+      input.style.overflowY = 'hidden';
+      return;
+    }
+    input.style.height = '24px';
+    const sh = input.scrollHeight;
+    input.style.height = Math.min(Math.max(sh, 24), 140) + 'px';
+    input.style.overflowY = sh > 140 ? 'auto' : 'hidden';
+  };
   input.addEventListener('input', fit);
   input.addEventListener('keydown', () => setTimeout(fit));
   $('sendButton').addEventListener('click', () => setTimeout(fit));

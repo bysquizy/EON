@@ -144,10 +144,12 @@ function renderState(newState) {
   renderHistory();
   renderStats();
   document.querySelectorAll('[data-style]').forEach(btn => btn.classList.toggle('selected', btn.dataset.style === state.style));
-  ['modelSelect', 'settingsModelSelect'].forEach(id => {
+  ['settingsModelSelect'].forEach(id => {
     const select = el(id);
-    if (Array.from(select.options).some(opt => opt.value === state.model)) select.value = state.model;
+    if (select && Array.from(select.options).some(opt => opt.value === state.model)) select.value = state.model;
   });
+  if (typeof syncUnifiedModelSelect === 'function') syncUnifiedModelSelect();
+  if (typeof renderHardwareAndSetupBanner === 'function') renderHardwareAndSetupBanner();
 }
 
 function renderChat() {
@@ -246,22 +248,22 @@ function renderChat() {
     tools.className = 'reply-actions';
     const starred = state.stars.includes(index);
     const chatId = state.active_chat_id;
-    tools.append(action(starred ? '★ Favoride' : '☆ Favori', () =>
+    if (entry.role === 'assistant') {
+      tools.append(action('Seslendir',()=>speakText(entry.content)));
+      tools.append(action('Kopyala', () => navigator.clipboard.writeText(entry.content)));
+      tools.append(action('Stüdyo',()=>openInStudio(entry.content)));
+    } else {
+      tools.append(action('Kopyala', () => navigator.clipboard.writeText(entry.content)));
+      tools.append(action('Düzenle', async () => {
+        if (busy) return;
+        const value = prompt('Bu mesajdan sonraki yanıtlar yeniden oluşturulacak.', entry.content);
+        if (value?.trim()) await streamAnswer(value.trim(), index);
+      }));
+    }
+    tools.append(action(starred ? '★' : '☆', () =>
       library('star', {id:chatId, index, revision:state.revision, on:!starred})));
     tools.append(action('Sil', async()=>{
       if (confirm('Bu mesaj ve eşleşen yanıt silinsin mi?')) await extra({kind:'delete_message',id:chatId,index,revision:state.revision});
-    }));
-    tools.append(action('Hafızaya öner',()=>saveMemoryCandidate(entry.content)));
-    tools.append(action('Görev öner',()=>proposeTaskFromMessage(entry.content)));
-    if (entry.role === 'assistant') {
-      tools.append(action('Studio’da üret',()=>openInStudio(entry.content)));
-      tools.append(action('Seslendir',()=>speakText(entry.content)));
-    }
-    tools.append(action('Kopyala', () => navigator.clipboard.writeText(entry.content)));
-    if (entry.role === 'user') tools.append(action('Düzenle', async () => {
-      if (busy) return;
-      const value = prompt('Bu mesajdan sonraki yanıtlar yeniden oluşturulacak.', entry.content);
-      if (value?.trim()) await streamAnswer(value.trim(), index);
     }));
     msg.append(tools);
     if (entry.role === 'assistant' && index === history.length - 1) {
@@ -386,22 +388,41 @@ async function loadModels() {
   const result = await request('/api/models');
   installedModels = result.models || [];
   state.model = result.selected;
-  for (const id of ['modelSelect', 'settingsModelSelect']) modelOptions(el(id), installedModels, state.model);
-  el('connection').classList.toggle('connected', Boolean(result.connected && installedModels.length));
-  el('connectionText').textContent = !result.connected ? 'Ollama bağlantısı yok' : installedModels.length ? 'Yerel model hazır' : 'Yerel model bulunamadı';
+  modelOptions(el('settingsModelSelect'), installedModels, state.model);
+  if (typeof syncUnifiedModelSelect === 'function') syncUnifiedModelSelect();
+  const hasCloud = Boolean(state.cloud_model && state.cloud_allowed);
+  el('connection').classList.toggle('connected', Boolean(hasCloud || (result.connected && installedModels.length)));
+  if (!hasCloud) {
+    el('connectionText').textContent = !result.connected ? 'Hazır' : installedModels.length ? 'Yerel model hazır' : 'Hazır';
+  }
 }
 
 async function changeModel(name) {
   if (!name) return;
   try {
+    if (name.startsWith('models/gemini-')) {
+      if (!state?.gemini_configured && !state?.gemini_models_ready && !state?.cloud_model) {
+        showPage('settings');
+        el('directApiKeyInput')?.focus();
+        if (typeof syncUnifiedModelSelect === 'function') syncUnifiedModelSelect();
+        toast('Gemini modelini kullanmak için Google Gemini API anahtarını kaydet.');
+        return;
+      }
+      const updated = await request('/api/cloud/new', {
+        id: (state.cloud_model || !state.history?.length) ? state.active_chat_id : null,
+        model: name,
+        consent: true,
+      });
+      renderState(updated);
+      toast('Model seçildi: ' + (typeof formatGeminiModelLabel === 'function' ? formatGeminiModelLabel(name) : name.replace('models/', '')));
+      return;
+    }
     const updated = await request('/api/model', {model: name});
     renderState(updated);
-    toast('Model değiştirildi: ' + name);
+    toast('Yerel model seçildi: ' + name);
   } catch (error) {
     toast(error.message);
-    if (state) ['modelSelect', 'settingsModelSelect'].forEach(id => {
-      if (installedModels.includes(state.model)) el(id).value = state.model;
-    });
+    if (typeof syncUnifiedModelSelect === 'function') syncUnifiedModelSelect();
   }
 }
 
@@ -600,11 +621,16 @@ function wireEvents() {
   document.querySelectorAll('.nav-button').forEach(btn => btn.addEventListener('click', () => showPage(btn.dataset.view)));
   document.querySelectorAll('[data-style]').forEach(btn => btn.addEventListener('click', () => changeLength(btn.dataset.style)));
   document.querySelectorAll('[data-action]').forEach(btn => btn.addEventListener('click', () => {
+    if (btn.dataset.action === 'livevoice') {
+      if (typeof openLiveVoiceOverlay === 'function') openLiveVoiceOverlay();
+      return;
+    }
     if (btn.dataset.action === 'apps') return showPage('apps');
     if (btn.dataset.action === 'kb') return showPage('kb');
     if (btn.dataset.action === 'studio') return showPage('studio');
     showPage('chat');
     el('messageInput').value = btn.dataset.action === 'math' ? '/hesap ' : 'Python ile şu konuda kod yaz: ';
+    el('messageInput').dispatchEvent(new Event('input'));
     el('messageInput').focus();
   }));
   el('sendButton').addEventListener('click', send);
@@ -656,10 +682,13 @@ async function initialize() {
     renderState(state);
     renderApps();
     installedModels = boot.models.models || [];
-    for (const id of ['modelSelect','settingsModelSelect']) modelOptions(el(id), installedModels, boot.models.selected);
+    modelOptions(el('settingsModelSelect'), installedModels, boot.models.selected);
+    if (typeof syncUnifiedModelSelect === 'function') syncUnifiedModelSelect();
     el('connection').classList.toggle('connected', Boolean(state.cloud_model || (boot.models.connected && installedModels.length)));
     setConnectionLost(false);
-    el('connectionText').textContent = state.cloud_model ? 'Gemini hazır' : 'EON hazır';
+    el('connectionText').textContent = state.cloud_model
+      ? (typeof formatGeminiModelLabel === 'function' ? formatGeminiModelLabel(state.cloud_model) : 'Gemini hazır')
+      : 'Hazır';
     // Non-blocking background discovery of local Ollama models so UI startup is instant
     setTimeout(() => { loadModels().catch(() => {}); }, 80);
   } catch (error) { toast('EON yerel sunucusu hazır değil: ' + error.message); }

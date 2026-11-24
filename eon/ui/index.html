@@ -45,14 +45,14 @@
   </svg>
   <div class="window">
     <header class="topbar">
-      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.6.1</span></div>
+      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.6.2</span></div>
       <button id="commandOpen" class="outline-button" aria-haspopup="dialog" title="Komut Merkezi (Ctrl+K)">Komutlar <kbd>Ctrl K</kbd></button>
       <div class="volume-bar" id="volumeBar" title="Bilgisayar Ses Düzeyi (Windows Core Audio)">
         <button type="button" id="volMuteBtn" class="icon-button" aria-label="Sesi Kıs / Aç" title="Sesi Kıs / Aç"><svg><use href="#i-volume"/></svg></button>
         <input type="range" id="volSlider" min="0" max="100" value="50" aria-label="Bilgisayar ses düzeyi">
         <span id="volPercentLabel">50%</span>
       </div>
-      <div class="ambient"><time id="clock"></time><span id="forecast">Hava durumu kapalı</span></div>
+      <div class="ambient"><time id="clock"></time><span id="forecast" hidden></span></div>
       <div class="top-status" id="connection"><span class="status-dot"></span><span id="connectionText">Bağlanıyor...</span></div>
     </header>
     <div class="main-layout">
@@ -90,13 +90,12 @@
           <div class="welcome" id="welcome">
             <svg class="hero-logo"><use href="#logo"/></svg>
             <h1>EON</h1>
-            <p>Buradayım. Araştırmak, belge üretmek veya projelerinle çalışmak için hazır.</p>
+            <p>Nasıl yardımcı olabilirim?</p>
             <div class="suggestions">
+              <button type="button" data-action="livevoice">Canlı sesli konuş <svg><use href="#i-mic"/></svg></button>
               <button type="button" data-action="kb">Belge yükle ve sor <svg><use href="#i-arrow"/></svg></button>
               <button type="button" data-action="studio">Rapor veya tablo üret <svg><use href="#i-arrow"/></svg></button>
-              <button type="button" data-action="apps">Uygulama aç <svg><use href="#i-arrow"/></svg></button>
-              <button type="button" data-action="code">Kod hakkında sor <svg><use href="#i-arrow"/></svg></button>
-              <button type="button" data-action="math">Bir hesap yap <svg><use href="#i-arrow"/></svg></button>
+              <button type="button" data-action="code">Kod yaz veya incele <svg><use href="#i-arrow"/></svg></button>
             </div>
           </div>
           <div class="chat-log" id="chatLog" role="log" aria-live="polite" aria-label="Mesajlar"></div>
@@ -105,27 +104,70 @@
             <div id="visionPreviewBar" class="attachment-bar hidden" aria-label="Eklenen görseller"></div>
             <div class="composer">
               <input type="file" id="visionInput" class="hidden" accept="image/png,image/jpeg,image/webp" multiple>
-              <button type="button" id="attachImageBtn" class="icon-button" title="Görsel ekle (PNG, JPEG, WebP) veya sürükle-bırak" aria-label="Görsel ekle"><svg><use href="#i-image"/></svg></button>
-              <button type="button" id="pttButton" class="icon-button" title="Bas-Konuş (Yerel Ses Girişi)" aria-label="Bas-Konuş"><svg><use href="#i-mic"/></svg></button>
-              <button type="button" id="liveVoiceToggle" class="icon-button" title="Canlı Sesli Yanıt Modu (Cümle bazlı gerçek zamanlı Neural HD seslendirme)" aria-pressed="false" aria-label="Canlı Sesli Yanıt Modu"><svg><use href="#i-volume"/></svg></button>
+              <button type="button" id="attachImageBtn" class="icon-button" title="Görsel ekle (PNG, JPEG, WebP)" aria-label="Görsel ekle"><svg><use href="#i-image"/></svg></button>
+              <button type="button" id="pttButton" class="icon-button" title="Sesle Yaz (Mikrofon)" aria-label="Sesle Yaz"><svg><use href="#i-mic"/></svg></button>
+              <button type="button" id="liveVoiceToggle" class="icon-button live-voice-btn" title="Canlı Sesli Konuşma (Live Voice)" aria-pressed="false" aria-label="Canlı Sesli Konuşma"><svg><use href="#i-volume"/></svg></button>
               <label class="sr-only" for="messageInput">Mesaj</label>
-              <textarea rows="1" maxlength="2500" id="messageInput" placeholder="EON'a bir şey sor..."></textarea>
-              <button type="button" id="researchToggle" class="pill-toggle" title="Kaynaklı Araştırma Modu (Gemini Grounding)" aria-pressed="false"><svg><use href="#i-globe"/></svg><span>Araştırma</span></button>
-              <select id="profileSelect" aria-label="Çalışma profili" title="Hız ve düşünme profili">
+              <textarea rows="1" maxlength="2500" id="messageInput" placeholder="Mesaj yaz..."></textarea>
+              <button type="button" id="researchToggle" class="pill-toggle" title="Web Araştırması (Google Grounding)" aria-pressed="false"><svg><use href="#i-globe"/></svg><span>Araştırma</span></button>
+              <select id="profileSelect" aria-label="Çalışma profili" title="Yanıt hızı ve derinliği">
                 <option value="fast">Hızlı</option>
                 <option value="balanced" selected>Dengeli</option>
-                <option value="deep">Derin Düşünme</option>
+                <option value="deep">Derin</option>
               </select>
-              <select id="modelSelect" aria-label="Yerel model" title="Model seçimi"><option value="">Modeller yükleniyor</option></select>
-              <button type="button" id="stop" class="outline-button hidden">Durdur</button><button class="send-button" type="button" id="sendButton" title="Mesaj gönder" aria-label="Gönder"><svg><use href="#i-send"/></svg></button>
+              <select id="modelSelect" aria-label="Model seçimi" title="Aktif model"><option value="">Model seç</option></select>
+              <button type="button" id="stop" class="outline-button hidden">Durdur</button>
+              <button class="send-button" type="button" id="sendButton" title="Gönder (Enter)" aria-label="Gönder"><svg><use href="#i-send"/></svg></button>
             </div>
-            <div class="composer-footer"><span id="providerBadge">Yerel Ollama</span><span id="voiceIndicator" class="voice-badge hidden">Mikrofon etkin · Durdurmak için tıkla</span><span id="busyMessage"></span></div>
+            <div class="composer-footer">
+              <div class="footer-left">
+                <span id="providerBadge">Hazır</span>
+                <span id="voiceIndicator" class="voice-badge hidden">Dinleniyor · Durdurmak için tıkla</span>
+              </div>
+              <div class="footer-right">
+                <span id="busyMessage"></span>
+              </div>
+            </div>
+          </div>
+
+          <div id="liveVoiceOverlay" class="live-voice-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="liveVoiceStatusTitle">
+            <div class="live-voice-card">
+              <div class="live-voice-header">
+                <span class="live-voice-tag">EON LIVE VOICE</span>
+                <div class="live-voice-controls-top">
+                  <select id="liveVoicePersona" aria-label="Ses karakteri" title="Ses karakteri">
+                    <option value="tr-TR-AhmetNeural">Ahmet (Doğal Erkek)</option>
+                    <option value="tr-TR-EmelNeural">Emel (Doğal Kadın)</option>
+                  </select>
+                  <button type="button" id="liveVoiceCloseBtn" class="icon-button" aria-label="Canlı sesi kapat" title="Kapat (Esc)"><svg><use href="#i-x"/></svg></button>
+                </div>
+              </div>
+              <div class="live-voice-stage">
+                <button type="button" id="liveVoiceOrb" class="live-voice-orb" data-state="idle" aria-label="Konuşmak veya sesi kesmek için dokun">
+                  <span class="orb-ring orb-ring-1"></span>
+                  <span class="orb-ring orb-ring-2"></span>
+                  <span class="orb-core"><svg><use href="#i-mic"/></svg></span>
+                </button>
+                <h2 id="liveVoiceStatusTitle" class="live-voice-title">Canlı Sesli Konuşma Hazır</h2>
+                <p id="liveVoiceTranscript" class="live-voice-sub">Konuşmaya başlamak için küreye dokunun veya mikrofonla konuşun.</p>
+                <div id="liveVoiceReplyText" class="live-voice-reply"></div>
+              </div>
+              <div class="live-voice-quick">
+                <input type="text" id="liveVoiceQuickInput" class="field" maxlength="800" placeholder="Mikrofon olmadan konuşmak için buraya yazıp Enter’a bas...">
+                <button type="button" id="liveVoiceQuickSend" class="primary-button">Sesli Yanıtla</button>
+              </div>
+              <div class="live-voice-actions">
+                <button type="button" id="liveVoiceListenBtn" class="outline-button"><svg><use href="#i-mic"/></svg> <span id="liveVoiceListenLabel">Dinlemeyi Başlat</span></button>
+                <button type="button" id="liveVoiceInterruptBtn" class="outline-button">Sesi Kes</button>
+                <button type="button" id="liveVoiceEndBtn" class="text-button">Konuşmayı Bitir</button>
+              </div>
+            </div>
           </div>
         </section>
 
         <section class="page content-page" id="view-projects" aria-label="Projeler">
           <div class="page-heading">
-            <div><p class="eyebrow">ÇALIŞMA ALANI</p><h2>EON Projects 2.0</h2><p>Her proje için ayrı yönergeler, çalışma notları, bilgi tabanı belgeleri, hafıza kapsamı ve model tercihi.</p></div>
+            <div><p class="eyebrow">ÇALIŞMA ALANI</p><h2>Projeler</h2><p>Her proje için ayrı yönergeler, çalışma notları, belgeler ve model tercihi.</p></div>
             <button class="outline-button" id="newProjectBtn" type="button"><svg><use href="#i-plus"/></svg> Yeni proje</button>
           </div>
           <div class="settings-grid" id="projectsWorkspaceGrid">
@@ -196,7 +238,7 @@
 
         <section class="page content-page" id="view-studio" aria-label="Studio">
           <div class="page-heading">
-            <div><p class="eyebrow">BELGE ÜRETİMİ</p><h2>EON Studio</h2><p>Sohbet yanıtlarını veya tabloları önizleyerek DOCX, PDF, XLSX, CSV, Markdown ve TXT dosyasına dönüştür.</p></div>
+            <div><p class="eyebrow">BELGE ÜRETİMİ</p><h2>Stüdyo</h2><p>Sohbet yanıtlarını veya tabloları önizleyerek DOCX, PDF, XLSX, CSV, Markdown ve TXT dosyasına dönüştür.</p></div>
             <button class="outline-button" id="studioLoadLastReply" type="button">Son Sohbet Yanıtını Al</button>
           </div>
           <div class="settings-grid">
@@ -243,7 +285,7 @@
 
         <section class="page content-page" id="view-actions" aria-label="Araçlar">
           <div class="page-heading">
-            <div><p class="eyebrow">GÜVENLİ BECERİLER</p><h2>EON Actions</h2><p>İzinli klasörlerde kontrollü dosya işlemleri, önizlemeli onay, önceki sürüme geri alma ve yerel denetim kaydı.</p></div>
+            <div><p class="eyebrow">GÜVENLİ BECERİLER</p><h2>Araçlar</h2><p>İzinli klasörlerde kontrollü dosya işlemleri, önizlemeli onay, önceki sürüme geri alma ve yerel denetim kaydı.</p></div>
             <button class="outline-button" id="actionRollbackBtn" type="button" disabled>Son Dosya İşlemini Geri Al</button>
           </div>
           <div class="settings-grid">
@@ -273,7 +315,7 @@
 
         <section class="page content-page" id="view-tasks" aria-label="Görevler">
           <div class="page-heading">
-            <div><p class="eyebrow">ÜRETKENLİK MERKEZİ</p><h2>EON Focus &amp; Tasks</h2><p>Pomodoro odak oturumu, onaylı görev listesi, günlük çalışma özeti ve çevrimdışı ICS takvim aktarımı.</p></div>
+            <div><p class="eyebrow">ÜRETKENLİK</p><h2>Görevler &amp; Odak</h2><p>Pomodoro odak oturumu, görev listesi, günlük çalışma özeti ve çevrimdışı ICS takvim aktarımı.</p></div>
           </div>
           <div class="settings-grid">
             <div class="settings-card">
@@ -326,7 +368,7 @@
 
         <section class="page content-page" id="view-memory" aria-label="Hafıza">
           <div class="page-heading">
-            <div><p class="eyebrow">KİŞİSEL BİLGİ</p><h2>EON Memory 2.0</h2><p>Kategori, kaynak, proje kapsamı ve çelişki kontrolüyle yerel hafıza yönetimi.</p></div>
+            <div><p class="eyebrow">KİŞİSEL BİLGİ</p><h2>Hafıza</h2><p>Kategori, kaynak, proje kapsamı ve çelişki kontrolüyle yerel hafıza yönetimi.</p></div>
             <button class="outline-button" id="exportMemoryBtn" type="button">Hafızayı Dışa Aktar (.json)</button>
           </div>
           <div class="settings-card">
@@ -354,7 +396,7 @@
 
         <section class="page content-page" id="view-health" aria-label="Sistem Sağlığı">
           <div class="page-heading">
-            <div><p class="eyebrow">KOMUTA MERKEZİ</p><h2>EON Command Center</h2><p>Sağlayıcı bağlantıları, Tam Çevrimdışı Mod (Kill-Switch), ağ denetim günlüğü ve sistem belleği.</p></div>
+            <div><p class="eyebrow">DURUM &amp; AĞ</p><h2>Sistem Sağlığı</h2><p>Sağlayıcı bağlantıları, Tam Çevrimdışı Mod, ağ denetim günlüğü ve sistem belleği.</p></div>
             <div class="button-row">
               <button class="outline-button" id="ccOfflineKillSwitchBtn" type="button" aria-pressed="false">Tam Çevrimdışı Mod: Kapalı</button>
               <button class="outline-button" id="ccDesktopShortcutBtn" type="button">Masaüstü Kısayolu Oluştur</button>

@@ -509,43 +509,194 @@ function renderVisionBar() {
 }
 
 let activeRecognition = null;
+let liveVoiceRecognition = null;
+let liveVoiceAutoLoop = false;
+
+function setLiveVoiceUiState(mode, title, subtitle) {
+  const orb = el('liveVoiceOrb');
+  if (orb) orb.dataset.state = mode || 'idle';
+  if (el('liveVoiceStatusTitle') && title != null) el('liveVoiceStatusTitle').textContent = title;
+  if (el('liveVoiceTranscript') && subtitle != null) el('liveVoiceTranscript').textContent = subtitle;
+  const lbl = el('liveVoiceListenLabel');
+  if (lbl) lbl.textContent = mode === 'listening' ? 'Dinlemeyi Durdur' : 'Dinlemeyi Başlat';
+}
+
+function stopLiveVoiceListening() {
+  if (liveVoiceRecognition) {
+    try { liveVoiceRecognition.onend = null; liveVoiceRecognition.stop(); } catch {}
+    liveVoiceRecognition = null;
+  }
+}
+
+function startLiveVoiceListening() {
+  stopVoicePlayback();
+  if (activeRecognition) {
+    try { activeRecognition.stop(); } catch {}
+    activeRecognition = null;
+  }
+  if (liveVoiceRecognition) {
+    stopLiveVoiceListening();
+    setLiveVoiceUiState('idle', 'Dinleme Duraklatıldı', 'Konuşmaya devam etmek için küreye dokunun veya aşağıdan yazın.');
+    return;
+  }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    setLiveVoiceUiState('idle', 'Canlı Sesli Yanıt Hazır', 'Bu pencerede mikrofon tanıma yerine aşağıdaki kutudan yazarak anında sesli konuşabilirsiniz.');
+    el('liveVoiceQuickInput')?.focus();
+    return;
+  }
+  try {
+    const rec = new SR();
+    rec.lang = 'tr-TR';
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    liveVoiceRecognition = rec;
+    let capturedText = '';
+    let submitted = false;
+    setLiveVoiceUiState('listening', 'Dinliyorum…', 'Konuşmaya başlayın, cümleniz bittiğinde EON sesli yanıtlayacak.');
+    rec.onresult = evt => {
+      let interim = '';
+      let finalTxt = '';
+      for (let i = evt.resultIndex; i < evt.results.length; i++) {
+        const t = evt.results[i][0]?.transcript || '';
+        if (evt.results[i].isFinal) finalTxt += t;
+        else interim += t;
+      }
+      capturedText = (finalTxt || interim).trim();
+      if (capturedText) {
+        setLiveVoiceUiState('listening', 'Dinliyorum…', `“${capturedText}”`);
+      }
+      if (finalTxt.trim() && !submitted) {
+        submitted = true;
+        liveVoiceAutoLoop = true;
+        stopLiveVoiceListening();
+        submitLiveVoiceTurn(finalTxt.trim());
+      }
+    };
+    rec.onerror = evt => {
+      liveVoiceRecognition = null;
+      const code = evt?.error || '';
+      if (code === 'no-speech') {
+        setLiveVoiceUiState('idle', 'Ses Algılanmadı', 'Tekrar konuşmak için küreye dokunun veya aşağıdan mesaj gönderin.');
+      } else {
+        setLiveVoiceUiState('idle', 'Canlı Ses Hazır', 'Mikrofon bağlı değil veya izin kapalı — aşağıdaki kutudan yazarak canlı sesli konuşabilirsiniz.');
+        el('liveVoiceQuickInput')?.focus();
+      }
+    };
+    rec.onend = () => {
+      liveVoiceRecognition = null;
+      if (!submitted && capturedText) {
+        submitted = true;
+        liveVoiceAutoLoop = true;
+        submitLiveVoiceTurn(capturedText);
+      } else if (!submitted && el('liveVoiceOrb')?.dataset.state === 'listening') {
+        setLiveVoiceUiState('idle', 'Canlı Sesli Konuşma Hazır', 'Konuşmak için küreye dokunun veya aşağıdan sesli yanıt alın.');
+      }
+    };
+    rec.start();
+  } catch {
+    liveVoiceRecognition = null;
+    setLiveVoiceUiState('idle', 'Canlı Ses Hazır', 'Aşağıdaki kutudan mesajınızı yazıp anında sesli yanıt alabilirsiniz.');
+  }
+}
+
+async function submitLiveVoiceTurn(text) {
+  const clean = (text || '').trim();
+  if (!clean || busy) return;
+  stopLiveVoiceListening();
+  stopVoicePlayback();
+  setLiveVoiceUiState('thinking', 'Düşünüyor…', `“${clean}”`);
+  if (el('liveVoiceReplyText')) el('liveVoiceReplyText').textContent = '';
+  await streamAnswer(clean);
+}
+
+function openLiveVoiceOverlay() {
+  const overlay = el('liveVoiceOverlay');
+  if (!overlay) return;
+  showPage('chat');
+  overlay.classList.remove('hidden');
+  el('liveVoiceToggle')?.setAttribute('aria-pressed', 'true');
+  el('liveVoiceToggle')?.classList.add('active');
+  if (el('liveVoicePersona') && el('voicePersonaSelect')) {
+    el('liveVoicePersona').value = el('voicePersonaSelect').value || 'tr-TR-AhmetNeural';
+  }
+  if (el('liveVoiceReplyText')) el('liveVoiceReplyText').textContent = '';
+  startLiveVoiceListening();
+}
+
+function closeLiveVoiceOverlay() {
+  liveVoiceAutoLoop = false;
+  stopLiveVoiceListening();
+  stopVoicePlayback();
+  el('liveVoiceOverlay')?.classList.add('hidden');
+  el('liveVoiceToggle')?.setAttribute('aria-pressed', 'false');
+  el('liveVoiceToggle')?.classList.remove('active');
+}
+
+function notifyLiveStreamFinished() {
+  const overlayOpen = !el('liveVoiceOverlay')?.classList.contains('hidden');
+  if (!overlayOpen) return;
+  if (!liveSentenceBusy && !liveSentenceQueue.length) {
+    if (el('liveVoiceOrb')?.dataset.state === 'thinking') {
+      setLiveVoiceUiState('idle', 'Canlı Sesli Konuşma Hazır', 'Yeni bir şey söylemek için küreye dokunun.');
+    }
+  }
+}
+
 function togglePushToTalk() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const indicator = el('voiceIndicator');
   const btn = el('pttButton');
   if (activeRecognition) {
-    activeRecognition.stop();
+    try { activeRecognition.stop(); } catch {}
     activeRecognition = null;
     indicator?.classList.add('hidden');
     btn?.classList.remove('active');
     return;
   }
   if (!SR) {
-    toast('Tarayıcı yerleşik ses tanıma (Web Speech API) desteklemiyor. Mesajları Windows SAPI ile seslendirmek için yanıtlardaki "Seslendir" düğmesini kullanabilirsin.');
+    openLiveVoiceOverlay();
     return;
   }
-  const rec = new SR();
-  rec.lang = 'tr-TR';
-  rec.interimResults = false;
-  rec.maxAlternatives = 1;
-  activeRecognition = rec;
-  indicator?.classList.remove('hidden');
-  btn?.classList.add('active');
-  rec.onresult = evt => {
-    const transcript = evt.results?.[0]?.[0]?.transcript || '';
-    if (transcript) {
-      const inp = el('messageInput');
-      inp.value = (inp.value ? inp.value + ' ' : '') + transcript.trim();
-      inp.dispatchEvent(new Event('input'));
-    }
-  };
-  rec.onerror = () => toast('Ses girişi tamamlanamadı veya mikrofon izni verilmedi.');
-  rec.onend = () => {
-    activeRecognition = null;
-    indicator?.classList.add('hidden');
-    btn?.classList.remove('active');
-  };
-  rec.start();
+  try {
+    const rec = new SR();
+    rec.lang = 'tr-TR';
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    activeRecognition = rec;
+    const baseText = el('messageInput')?.value ? el('messageInput').value.trim() + ' ' : '';
+    indicator?.classList.remove('hidden');
+    btn?.classList.add('active');
+    rec.onresult = evt => {
+      let transcript = '';
+      for (let i = 0; i < evt.results.length; i++) {
+        transcript += evt.results[i][0]?.transcript || '';
+      }
+      if (transcript.trim()) {
+        const inp = el('messageInput');
+        inp.value = baseText + transcript.trim();
+        inp.dispatchEvent(new Event('input'));
+      }
+    };
+    rec.onerror = evt => {
+      activeRecognition = null;
+      indicator?.classList.add('hidden');
+      btn?.classList.remove('active');
+      if (evt?.error === 'not-allowed' || evt?.error === 'audio-capture' || evt?.error === 'service-not-allowed') {
+        openLiveVoiceOverlay();
+      } else if (evt?.error !== 'no-speech') {
+        openLiveVoiceOverlay();
+      }
+    };
+    rec.onend = () => {
+      activeRecognition = null;
+      indicator?.classList.add('hidden');
+      btn?.classList.remove('active');
+    };
+    rec.start();
+  } catch {
+    openLiveVoiceOverlay();
+  }
 }
 
 let activeAudioPlayer = null;
@@ -564,11 +715,39 @@ function stopVoicePlayback() {
   }
 }
 
+function browserNaturalSpeakAsync(text, preferredVoice = 'tr-TR-AhmetNeural') {
+  return new Promise(resolve => {
+    if (!('speechSynthesis' in window)) return resolve(false);
+    try {
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = preferredVoice.startsWith('en-') ? 'en-US' : 'tr-TR';
+      utter.rate = 1.03;
+      utter.pitch = 1.0;
+      const voices = window.speechSynthesis.getVoices() || [];
+      const wantFemale = preferredVoice.includes('Emel') || preferredVoice.includes('Ava');
+      const best = voices.find(v => v.name.includes('Natural') && v.lang.startsWith(utter.lang.slice(0, 2)) && (wantFemale ? /emel|ava|female/i.test(v.name) : /ahmet|andrew|male/i.test(v.name)))
+        || voices.find(v => v.name.includes('Natural') && v.lang.startsWith(utter.lang.slice(0, 2)))
+        || voices.find(v => v.lang.startsWith(utter.lang.slice(0, 2)));
+      if (best) utter.voice = best;
+      const timeout = setTimeout(() => resolve(true), Math.min(18000, Math.max(2500, text.length * 95)));
+      utter.onend = () => { clearTimeout(timeout); resolve(true); };
+      utter.onerror = () => { clearTimeout(timeout); resolve(false); };
+      window.speechSynthesis.speak(utter);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
 async function processLiveSentenceQueue() {
   if (liveSentenceBusy || !liveSentenceQueue.length) return;
   liveSentenceBusy = true;
+  const overlayOpen = !el('liveVoiceOverlay')?.classList.contains('hidden');
+  if (overlayOpen) {
+    setLiveVoiceUiState('speaking', 'Konuşuyor…', 'Kesmek veya yeni soru sormak için küreye dokunun.');
+  }
   const text = liveSentenceQueue.shift();
-  const voice = el('voicePersonaSelect')?.value || state?.voice_state?.selected || 'tr-TR-AhmetNeural';
+  const voice = el('liveVoicePersona')?.value || el('voicePersonaSelect')?.value || state?.voice_state?.selected || 'tr-TR-AhmetNeural';
   try {
     const res = await request('/api/voice', {action:'speak', text, voice});
     if (res.audio_base64) {
@@ -579,18 +758,34 @@ async function processLiveSentenceQueue() {
         activeAudioPlayer = audio;
         audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
         audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
-        audio.play().catch(() => resolve());
+        audio.play().catch(async () => {
+          URL.revokeObjectURL(url);
+          await browserNaturalSpeakAsync(res.cleaned_text || text, voice);
+          resolve();
+        });
       });
     } else if (res.cleaned_text) {
-      browserNaturalSpeak(res.cleaned_text, voice);
+      await browserNaturalSpeakAsync(res.cleaned_text, voice);
     }
   } catch {}
   liveSentenceBusy = false;
-  if (liveSentenceQueue.length) processLiveSentenceQueue();
+  if (liveSentenceQueue.length) {
+    processLiveSentenceQueue();
+  } else if (!el('liveVoiceOverlay')?.classList.contains('hidden') && !activeStream) {
+    if (liveVoiceAutoLoop) {
+      setTimeout(() => {
+        if (!el('liveVoiceOverlay')?.classList.contains('hidden') && !liveSentenceBusy && !activeStream) {
+          startLiveVoiceListening();
+        }
+      }, 350);
+    } else {
+      setLiveVoiceUiState('idle', 'Yanıt Tamamlandı', 'Tekrar konuşmak için küreye dokunun veya aşağıdan yazın.');
+    }
+  }
 }
 
 function enqueueLiveSentence(sentence) {
-  if (!sentence || sentence.length < 3) return;
+  if (!sentence || sentence.length < 2) return;
   liveSentenceQueue.push(sentence);
   processLiveSentenceQueue();
 }
@@ -713,14 +908,71 @@ function wireStudio() {
   el('voiceIndicator').onclick = togglePushToTalk;
   if (el('liveVoiceToggle')) {
     el('liveVoiceToggle').onclick = () => {
-      const cur = el('liveVoiceToggle').getAttribute('aria-pressed') === 'true';
-      const next = !cur;
-      el('liveVoiceToggle').setAttribute('aria-pressed', String(next));
-      el('liveVoiceToggle').classList.toggle('active', next);
-      if (!next) stopVoicePlayback();
-      toast(next ? 'Canlı Sesli Yanıt Modu açıldı: EON yanıt üretirken cümle cümle doğal sesle konuşacak.' : 'Canlı Sesli Yanıt Modu kapatıldı.');
+      const overlay = el('liveVoiceOverlay');
+      if (overlay && overlay.classList.contains('hidden')) {
+        openLiveVoiceOverlay();
+      } else {
+        closeLiveVoiceOverlay();
+      }
     };
   }
+  if (el('liveVoiceCloseBtn')) el('liveVoiceCloseBtn').onclick = closeLiveVoiceOverlay;
+  if (el('liveVoiceEndBtn')) el('liveVoiceEndBtn').onclick = closeLiveVoiceOverlay;
+  if (el('liveVoiceListenBtn')) el('liveVoiceListenBtn').onclick = () => startLiveVoiceListening();
+  if (el('liveVoiceInterruptBtn')) {
+    el('liveVoiceInterruptBtn').onclick = () => {
+      liveVoiceAutoLoop = false;
+      stopVoicePlayback();
+      if (activeStream) request('/api/stop', {key:activeStream}).catch(() => {});
+      setLiveVoiceUiState('idle', 'Ses Kesildi', 'Yeni bir şey söylemek için küreye dokunun veya aşağıdan yazın.');
+    };
+  }
+  if (el('liveVoiceOrb')) {
+    el('liveVoiceOrb').onclick = () => {
+      const st = el('liveVoiceOrb').dataset.state;
+      if (st === 'speaking' || liveSentenceBusy) {
+        stopVoicePlayback();
+        startLiveVoiceListening();
+      } else if (st === 'listening') {
+        stopLiveVoiceListening();
+        setLiveVoiceUiState('idle', 'Dinleme Duraklatıldı', 'Tekrar konuşmak için küreye dokunun.');
+      } else {
+        startLiveVoiceListening();
+      }
+    };
+  }
+  if (el('liveVoicePersona')) {
+    el('liveVoicePersona').onchange = async () => {
+      const v = el('liveVoicePersona').value;
+      if (el('voicePersonaSelect')) el('voicePersonaSelect').value = v;
+      try {
+        const res = await request('/api/voice', {action:'configure', voice:v});
+        renderState(res.state);
+      } catch {}
+    };
+  }
+  const sendLiveQuick = () => {
+    const inp = el('liveVoiceQuickInput');
+    const val = inp?.value.trim() || '';
+    if (!val) return;
+    inp.value = '';
+    liveVoiceAutoLoop = false;
+    submitLiveVoiceTurn(val);
+  };
+  if (el('liveVoiceQuickSend')) el('liveVoiceQuickSend').onclick = sendLiveQuick;
+  if (el('liveVoiceQuickInput')) {
+    el('liveVoiceQuickInput').onkeydown = e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendLiveQuick();
+      }
+    };
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !el('liveVoiceOverlay')?.classList.contains('hidden')) {
+      closeLiveVoiceOverlay();
+    }
+  });
   if (el('studioTemplateSelect')) {
     el('studioTemplateSelect').onchange = () => {
       const tplKey = el('studioTemplateSelect').value;
