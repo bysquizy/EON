@@ -2,13 +2,15 @@
 'use strict';
 const el = id => document.getElementById(id);
 let csrfToken = '';
-const launchAccess = new URLSearchParams(location.hash.slice(1)).get('access');
+const hashParams = new URLSearchParams(location.hash.slice(1));
+const launchAccess = hashParams.get('access');
+const launchBoot = hashParams.get('boot');
 let sessionAccess = launchAccess || '';
 try {
   if (launchAccess) sessionStorage.setItem('eon-access', launchAccess);
-  else sessionAccess = sessionStorage.getItem('eon-access') || '';
+  else if (!launchBoot) sessionAccess = sessionStorage.getItem('eon-access') || '';
 } catch {}
-if (launchAccess) history.replaceState(null, '', location.pathname);
+if (launchAccess || launchBoot) history.replaceState(null, '', location.pathname);
 let state = null;
 let installedModels = [];
 let apps = [];
@@ -71,7 +73,12 @@ async function request(path, body) {
 
 async function reconnect() {
   try {
-    const boot = await request('/api/bootstrap');
+    const bootUrl = launchBoot ? `/api/bootstrap?boot=${encodeURIComponent(launchBoot)}` : '/api/bootstrap';
+    const boot = await request(bootUrl);
+    if (boot.access) {
+      sessionAccess = boot.access;
+      try { sessionStorage.setItem('eon-access', sessionAccess); } catch {}
+    }
     csrfToken = boot.token;
     state = boot.state;
     apps = boot.apps || [];
@@ -251,6 +258,9 @@ function renderChat() {
     if (entry.role === 'assistant') {
       tools.append(action('Seslendir',()=>speakText(entry.content)));
       tools.append(action('Kopyala', () => navigator.clipboard.writeText(entry.content)));
+      if (entry.content.length > 180 || entry.content.includes('```')) {
+        tools.append(action('Canvas', () => typeof openCanvasDrawer === 'function' ? openCanvasDrawer(entry.content, currentChat()?.title || 'Canvas') : openInStudio(entry.content)));
+      }
       tools.append(action('Stüdyo',()=>openInStudio(entry.content)));
     } else {
       tools.append(action('Kopyala', () => navigator.clipboard.writeText(entry.content)));
@@ -675,7 +685,12 @@ async function initialize() {
   wireStudio();
   wireWorkspace();
   try {
-    const boot = await request('/api/bootstrap');
+    const bootUrl = launchBoot ? `/api/bootstrap?boot=${encodeURIComponent(launchBoot)}` : '/api/bootstrap';
+    const boot = await request(bootUrl);
+    if (boot.access) {
+      sessionAccess = boot.access;
+      try { sessionStorage.setItem('eon-access', sessionAccess); } catch {}
+    }
     csrfToken = boot.token;
     state = boot.state;
     apps = boot.apps || [];

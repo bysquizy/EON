@@ -48,6 +48,9 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ^
   "Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip;" ^
   "Expand-Archive -Force -Path $zip -DestinationPath $dest;" ^
   "Remove-Item -Force $zip;" ^
+  "$sig=Get-AuthenticodeSignature (Join-Path $dest 'python.exe');" ^
+  "if($sig.Status -ne 'Valid'){Remove-Item -Recurse -Force $dest; throw 'Python dijital imzasi dogrulanamadi!'};" ^
+  "Get-ChildItem -Path '%~dp0' -Recurse -File | ForEach-Object { try { Unblock-File -Path $_.FullName -ErrorAction SilentlyContinue } catch {} };" ^
   "Get-ChildItem -Path $dest -Filter 'python*._pth'|ForEach-Object{" ^
   "  $c=(Get-Content $_.FullName) -replace '#import site','import site';" ^
   "  if($c -notcontains '..'){$c+=@('..')};" ^
@@ -64,9 +67,14 @@ pause
 exit /b 1
 
 :dispatch
+if /I "%EON_MODE%"=="--cli" goto launch_cli
+if /I "%EON_MODE%"=="--console" goto launch_cli
 if /I "%EON_MODE%"=="--silent" goto launch_silent
 if /I "%EON_MODE%"=="--tray" goto launch_tray
-%PY_CMD% eon.py
+goto launch_tray
+
+:launch_cli
+%PY_CMD% eon.py %EON_MODE%
 goto finish
 
 :launch_silent

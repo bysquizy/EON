@@ -307,3 +307,94 @@ class Gemini:
                     if emitted_any:
                         return
             raise last_err
+
+    def synthesize(self, text: str, voice: str = "Kore",
+                   style: str = "warm, natural, expressive conversational tone",
+                   model: str = "gemini-3.8-flash-tts") -> dict:
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("Seslendirilecek metin boş.")
+        clean_voice = voice if voice in ("Kore", "Aoede", "Puck", "Charon", "Fenrir", "Zephyr", "Leda", "Orus") else "Kore"
+        models_to_try = [model] + ([m for m in ("gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts") if m != model])
+        last_err = None
+        for tts_model in models_to_try:
+            payload = {
+                "model": tts_model,
+                "input": [{
+                    "type": "user_input",
+                    "content": [{
+                        "type": "text",
+                        "text": text[:1800],
+                        "annotations": [{
+                            "type": "speech_metadata",
+                            "style": style,
+                        }],
+                    }],
+                }],
+                "response_format": {"type": "audio"},
+                "generation_config": {
+                    "speech_config": [{"voice": clean_voice}],
+                },
+            }
+            try:
+                data = self._request(
+                    "POST",
+                    "/v1beta/interactions",
+                    lambda reply: json.loads(reply.read(8 * 1024 * 1024)),
+                    json.dumps(payload).encode("utf-8"),
+                )
+                audio_b64 = ""
+                mime = "audio/wav"
+                if isinstance(data, dict):
+                    out_audio = data.get("output_audio")
+                    if isinstance(out_audio, dict) and isinstance(out_audio.get("data"), str):
+                        audio_b64 = out_audio["data"]
+                        mime = out_audio.get("mime_type") or mime
+                    if not audio_b64:
+                        for step in data.get("steps", []) or ():
+                            if isinstance(step, dict) and step.get("type") == "model_output":
+                                for part in step.get("content", []) or ():
+                                    if isinstance(part, dict) and part.get("type") == "audio" and isinstance(part.get("data"), str):
+                                        audio_b64 = part["data"]
+                                        mime = part.get("mime_type") or mime
+                if audio_b64:
+                    return {
+                        "audio_base64": audio_b64,
+                        "mime": mime,
+                        "voice": clean_voice,
+                        "model": tts_model,
+                    }
+            except LocalModelError as exc:
+                last_err = exc
+                continue
+        raise last_err or LocalModelError("Gemini Studio TTS ses üretemedi.")
+
+    def transcribe(self, audio_base64: str, mime_type: str = "audio/webm",
+                   model: str = "models/gemini-3.8-flash") -> str:
+        if not isinstance(audio_base64, str) or not audio_base64.strip():
+            raise ValueError("Ses verisi boş.")
+        if mime_type not in ("audio/webm", "audio/wav", "audio/mp4", "audio/ogg", "audio/mpeg"):
+            raise ValueError("Desteklenmeyen ses biçimi.")
+        target_model = model if MODEL.fullmatch(model or "") else "models/gemini-3.8-flash"
+        payload = {
+            "contents": [{
+                "role": "user",
+                "parts": [
+                    {"text": "Bu ses kaydını olduğu gibi, noktalama işaretleriyle yazıya dök. Sadece konuşulan metni döndür; yorum ekleme."},
+                    {"inlineData": {"mimeType": mime_type, "data": audio_base64}},
+                ],
+            }],
+            "generationConfig": {"maxOutputTokens": 1024, "temperature": 0.1},
+        }
+        data = self._request(
+            "POST",
+            "/v1beta/" + target_model + ":generateContent",
+            lambda reply: json.loads(reply.read(2 * 1024 * 1024)),
+            json.dumps(payload).encode("utf-8"),
+        )
+        for cand in (data.get("candidates") if isinstance(data, dict) else None) or ():
+            if not isinstance(cand, dict):
+                continue
+            for part in (cand.get("content") or {}).get("parts") or ():
+                if isinstance(part, dict) and isinstance(part.get("text"), str) and not part.get("thought"):
+                    return part["text"].strip()
+        return ""

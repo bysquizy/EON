@@ -128,6 +128,19 @@ dialog{border-radius:18px;box-shadow:0 30px 90px rgba(0,0,0,.5)}dialog::backdrop
 .live-voice-quick .field { margin:0; flex:1; height:38px; font-size:13px; }
 .live-voice-quick .primary-button { height:38px; padding:0 14px; font-size:13px; }
 .live-voice-actions { display:flex; justify-content:center; align-items:center; gap:10px; flex-wrap:wrap; }
+
+/* Split-Screen Canvas Drawer */
+.canvas-drawer { position:fixed; top:68px; right:0; bottom:0; width:min(520px,46vw); z-index:25; background:rgba(9,15,34,.96); backdrop-filter:blur(18px); border-left:1px solid var(--line-strong); box-shadow:-16px 0 48px rgba(0,0,0,.45); display:flex; flex-direction:column; padding:18px 20px; gap:14px; }
+.canvas-header { display:flex; align-items:center; justify-content:space-between; gap:12px; border-bottom:1px solid var(--line); padding-bottom:12px; }
+.canvas-header h3 { margin:6px 0 0; font-size:16px; font-weight:500; }
+.canvas-actions { display:flex; align-items:center; gap:8px; }
+.canvas-actions .outline-button, .canvas-actions .primary-button { padding:7px 12px; font-size:12.5px; }
+.canvas-editor { flex:1; width:100%; resize:none; background:#050b17; color:var(--text); border:1px solid var(--line); border-radius:12px; padding:14px; font:13.5px/1.6 "Cascadia Code",Consolas,monospace; outline:none; }
+.canvas-editor:focus { border-color:var(--accent); }
+.canvas-preview-pane { flex:1; overflow-y:auto; background:#070e20; border:1px solid var(--line); border-radius:12px; padding:16px; color:var(--text); line-height:1.65; }
+.settings-tabs { flex:none; min-width:min(540px,100%); }
+.memory-suggest-pill { display:inline-flex; align-items:center; gap:10px; margin:4px 0 6px 46px; padding:6px 12px; border-radius:99px; background:color-mix(in srgb,var(--accent) 12%,transparent); border:1px solid color-mix(in srgb,var(--accent) 34%,transparent); font-size:12px; color:var(--text); }
+@media(max-width:900px) { .canvas-drawer { width:100vw; } }
 .button-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
 .checklist-box, .subtle-box { max-height:190px; overflow-y:auto; padding:10px 12px; margin:8px 0; border-radius:10px; background:rgba(7,12,28,.55); border:1px solid var(--line); font-size:13px; color:var(--soft); white-space:pre-wrap; overflow-wrap:anywhere; }
 .checklist-box label { display:flex; align-items:center; gap:8px; margin:5px 0; }

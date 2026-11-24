@@ -111,12 +111,29 @@ def system_memory_info() -> dict:
 
 
 NATURAL_VOICES = {
-    "tr-TR-AhmetNeural": {"name": "Ahmet — Türkçe erkek", "lang": "tr-TR", "gender": "Male"},
-    "tr-TR-EmelNeural": {"name": "Emel — Türkçe kadın", "lang": "tr-TR", "gender": "Female"},
-    "en-US-AndrewMultilingualNeural": {"name": "Andrew — İngilizce erkek", "lang": "en-US", "gender": "Male"},
-    "en-US-AvaMultilingualNeural": {"name": "Ava — İngilizce kadın", "lang": "en-US", "gender": "Female"},
+    "Kore": {"name": "Kore — Stüdyo HD Kadın", "lang": "tr-TR", "gender": "Female", "studio": True},
+    "Aoede": {"name": "Aoede — Stüdyo HD Sıcak Kadın", "lang": "tr-TR", "gender": "Female", "studio": True},
+    "Charon": {"name": "Charon — Stüdyo HD Doğal Erkek", "lang": "tr-TR", "gender": "Male", "studio": True},
+    "Puck": {"name": "Puck — Stüdyo HD Enerjik Erkek", "lang": "tr-TR", "gender": "Male", "studio": True},
+    "Zephyr": {"name": "Zephyr — Stüdyo HD Akıcı Asistan", "lang": "tr-TR", "gender": "Female", "studio": True},
+    "tr-TR-AhmetNeural": {"name": "Ahmet — Çevrimdışı Erkek", "lang": "tr-TR", "gender": "Male"},
+    "tr-TR-EmelNeural": {"name": "Emel — Çevrimdışı Kadın", "lang": "tr-TR", "gender": "Female"},
+    "en-US-AndrewMultilingualNeural": {"name": "Andrew — Çevrimdışı Çok Dilli Erkek", "lang": "en-US", "gender": "Male"},
+    "en-US-AvaMultilingualNeural": {"name": "Ava — Çevrimdışı Çok Dilli Kadın", "lang": "en-US", "gender": "Female"},
 }
-DEFAULT_NEURAL_VOICE = "tr-TR-AhmetNeural"
+DEFAULT_NEURAL_VOICE = "Kore"
+
+STUDIO_VOICE_MAP = {
+    "Kore": "Kore",
+    "Aoede": "Aoede",
+    "Charon": "Charon",
+    "Puck": "Puck",
+    "Zephyr": "Zephyr",
+    "tr-TR-AhmetNeural": "Charon",
+    "tr-TR-EmelNeural": "Kore",
+    "en-US-AndrewMultilingualNeural": "Puck",
+    "en-US-AvaMultilingualNeural": "Aoede",
+}
 
 
 def clean_speech_text(text: str) -> str:

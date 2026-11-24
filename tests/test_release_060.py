@@ -183,10 +183,7 @@ class Release060Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.s.volume_action({"action": "mute", "muted": "invalid"})
         if os.name == "nt":
-            # Hosted Windows runners may not expose a physical audio endpoint.
-            # Mock the device boundary so this test remains hardware-independent.
-            with patch.object(audio, "get_state", return_value={"supported": True, "level": 50, "muted": False}):
-                st = self.s.volume_action({"action": "get"})
+            st = self.s.volume_action({"action": "get"})
             self.assertTrue(st["supported"])
             self.assertTrue(0 <= st["level"] <= 100)
 
@@ -244,6 +241,111 @@ class Release060Tests(unittest.TestCase):
             srv.shutdown()
             srv.server_close()
             t.join(timeout=3)
+
+    def test_v070_studio_tts_memory_suggestion_and_wipe_all(self):
+        from eon.gemini import Gemini
+        # 1. Gemini Studio TTS (gemini-3.8-flash-tts)
+        conn = Mock()
+        wav_b64 = base64.b64encode(b"RIFF\x24\x00\x00\x00WAVEfmt ").decode("ascii")
+        tts_resp = {
+            "steps": [{
+                "type": "model_output",
+                "content": [{"type": "audio", "data": wav_b64, "mime_type": "audio/wav"}],
+            }]
+        }
+        reply = io.BytesIO(json.dumps(tts_resp).encode("utf-8"))
+        reply.status = 200
+        conn.getresponse.return_value = reply
+        g = Gemini("synthetic-key", factory=lambda *a, **kw: conn)
+        synth = g.synthesize("Merhaba EON Stüdyo HD", voice="Kore")
+        self.assertEqual(synth["mime"], "audio/wav")
+        self.assertEqual(synth["audio_base64"], wav_b64)
+        _, path, body, _ = conn.request.call_args.args
+        self.assertEqual(path, "/v1beta/interactions")
+        self.assertEqual(json.loads(body)["model"], "gemini-3.8-flash-tts")
+
+        # 2. VoiceEngine routes to gemini_studio_tts when key exists, and falls back when offline kill-switch is ON
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "library.dpapi"
+            svc = EonService(provider_factory=FakeProvider, launcher=Mock(), vault_path=p)
+            try:
+                from eon.credentials import secret
+                secret(svc.secret_path, "synthetic-tts-key")
+                with patch("eon.service.Gemini") as mock_g:
+                    mock_g.return_value.synthesize.return_value = synth
+                    res_online = svc.voice_action({"action": "speak", "text": "Test stüdyo ses", "voice": "Kore"})
+                    self.assertEqual(res_online["engine"], "gemini_studio_tts")
+                    self.assertEqual(res_online["audio_base64"], wav_b64)
+                svc.runtime_action("offline", True)
+                res_offline = svc.voice_action({"action": "speak", "text": "Test çevrimdışı", "voice": "Kore"})
+                self.assertEqual(res_offline["engine"], "browser_natural")
+
+                # 3. Auto-memory suggestion
+                sugg = svc._detect_memory_suggestion("Tercihim: Kodları her zaman Python 3.13 ile yaz")
+                self.assertIsNotNone(sugg)
+
+                # 4. Wipe all resets vault & memory cleanly
+                svc.memory_edit("", "silinecek not")
+                svc.runtime_action("wipe_all")
+                self.assertFalse(svc.memory)
+                self.assertFalse(svc.secret_path.exists())
+            finally:
+                if svc.vault:
+                    svc.vault.close()
+
+    def test_v080_boot_exchange_ollama_cache_transcribe_and_wipe_locked_vault(self):
+        from eon.gemini import Gemini
+        from eon.provider import LocalOllama
+        from eon.config import LocalSettings
+        from eon.server import start_server
+        from urllib.request import urlopen
+        from urllib.error import HTTPError
+        import threading
+
+        # 1. LocalOllama capabilities() caches /api/show calls
+        prov = LocalOllama(LocalSettings())
+        with patch.object(prov, "_call", return_value={"capabilities": ["vision"]}) as mock_call:
+            c1 = prov.capabilities("qwen3:4b-instruct")
+            c2 = prov.capabilities("qwen3:4b-instruct")
+            self.assertTrue(c1["vision"] and c2["vision"])
+            self.assertEqual(mock_call.call_count, 1)
+
+        # 2. Gemini.transcribe() parses speech transcript cleanly
+        conn = Mock()
+        tr_resp = {"candidates": [{"content": {"parts": [{"text": "Merhaba EON testi"}]}}]}
+        reply = io.BytesIO(json.dumps(tr_resp).encode("utf-8"))
+        reply.status = 200
+        conn.getresponse.return_value = reply
+        g = Gemini("synthetic-key", factory=lambda *a, **kw: conn)
+        txt = g.transcribe(base64.b64encode(b"audio-bytes").decode("ascii"), "audio/webm")
+        self.assertEqual(txt, "Merhaba EON testi")
+
+        # 3. One-time boot code exchange on /api/bootstrap
+        srv = start_server(service=self.s)
+        t = threading.Thread(target=srv.serve_forever, daemon=True)
+        t.start()
+        try:
+            with urlopen(f"{srv.origin}/api/bootstrap?boot={srv.boot_code}", timeout=3) as resp:
+                boot_data = json.loads(resp.read())
+                self.assertEqual(boot_data["access"], srv.access)
+                self.assertEqual(boot_data["token"], srv.token)
+            # Second use of the same boot code must fail with 403
+            with self.assertRaises(HTTPError) as err:
+                urlopen(f"{srv.origin}/api/bootstrap?boot={srv.boot_code}", timeout=3)
+            self.assertEqual(err.exception.code, 403)
+        finally:
+            srv.shutdown()
+            srv.server_close()
+            t.join(timeout=3)
+
+        # 4. wipe_all deletes library.dpapi even if self.vault is None
+        with tempfile.TemporaryDirectory() as tmp:
+            vp = Path(tmp) / "library.dpapi"
+            vp.write_bytes(b"corrupted-or-locked")
+            svc2 = EonService(provider_factory=FakeProvider, launcher=Mock(), vault_path=vp)
+            self.assertIsNone(svc2.vault)
+            svc2.runtime_action("wipe_all")
+            self.assertFalse(vp.exists())
 
 
 if __name__ == "__main__":

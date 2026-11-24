@@ -1,5 +1,19 @@
 # Değişiklikler
 
+## v0.8.0
+
+- **Güvenlik & Performans Sertleştirmesi:** Tek kullanımlık `#boot=` oturum değişimi (komut satırında kalıcı erişim sırrı gizlenir), kilitli/bozuk durumda bile tüm `*.dpapi` dosyalarını silen `wipe_all` düzeltmesi, `open_chat()` gereksiz disk yazımının kaldırılması ve `LocalOllama.capabilities()` önbelleği.
+- **4 Sekmeli Sade Ayarlar & Gereksizlerin Temizliği:** Ayarlar sayfası 4 temiz sekmeye (`Genel & Görünüm`, `Yapay Zekâ & Modeller`, `Ses & Canlı Konuşma`, `Gizlilik & Veri`) ayrıldı; hava durumu kartı, eski Tkinter anahtar penceresi ve çifte proje yönetim düğmeleri arayüzden kaldırıldı.
+- **Güvenilir Ses Girişi & Canlı Ses Ön-Arabelleği:** Web Speech API'nin çalışmadığı ortamlarda `MediaRecorder` + Gemini ses dökümü (`/api/voice` `transcribe`) yedeklemesi ve Canlı Ses'te 2 cümlelik paralel ön-arabellek (pipelining).
+- **Canvas Canlı Önizleme:** Bölünmüş ekran Canvas paneline **Önizle / Düzenle** geçişi eklendi.
+
+## v0.7.0
+
+- **ElevenLabs Seviyesinde Gemini Stüdyo HD Seslendirme (`gemini-3.8-flash-tts`):** Mevcut Gemini API anahtarıyla doğrudan `/v1beta/interactions` üzerinden stüdyo kalitesinde, nefes ve duygu tonlamalı (`Kore`, `Aoede`, `Charon`, `Puck`, `Zephyr`) ses sentezi; canlı ses modunda cümle ön-arabelleği (pipelining) ve çevrimdışı modda otomatik yerel yedek.
+- **Bölünmüş Ekran Canvas Paneli (`#canvasDrawer`):** Uzun kod blokları ve belgeler için sohbetin yanında açılan, düzenlenebilir ve tek tıkla Stüdyo'ya (DOCX/PDF/XLSX) aktarılabilir Canvas paneli.
+- **Akıllı Bellek Önerisi & Tek Tıkla Gizlilik Sıfırlama:** Kullanıcı tercihlerini sohbet içinde algılayıp tek tıkla hafızaya kaydetme önerisi ve Ayarlar'dan tüm DPAPI kasalarını/anahtarlarını kalıcı silen sıfırlama düğmesi.
+- **Masaüstü Başlatma & Smart App Control İyileştirmeleri:** `EON.pyw` + `baslat.bat` ile konsolsuz sistem tepsisi açılışı, indirilen taşınabilir Python için Authenticode dijital imza doğrulaması ve Mark-of-the-Web temizliği.
+
 ## v0.6.2
 
 - **Gemini Akış & Düşünme (Thinking) Token Bütçesi Düzeltmesi:** `gemini-3.8-flash` ve `gemini-4.0-helium` modellerinde düşünme token'ları nedeniyle yanıtın yarım kalmasını önleyen yüksek çıktı bütçesi (`2560` / `8192` / `16384`), SSE `content: null` / `[DONE]` dayanıklılığı ve otomatik model yedekleme (fallback).

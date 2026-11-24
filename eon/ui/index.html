@@ -45,14 +45,14 @@
   </svg>
   <div class="window">
     <header class="topbar">
-      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.6.2</span></div>
+      <div class="brand"><svg class="brand-logo"><use href="#logo"/></svg><span>EON</span><span class="version">v0.8.0</span></div>
       <button id="commandOpen" class="outline-button" aria-haspopup="dialog" title="Komut Merkezi (Ctrl+K)">Komutlar <kbd>Ctrl K</kbd></button>
       <div class="volume-bar" id="volumeBar" title="Bilgisayar Ses Düzeyi (Windows Core Audio)">
         <button type="button" id="volMuteBtn" class="icon-button" aria-label="Sesi Kıs / Aç" title="Sesi Kıs / Aç"><svg><use href="#i-volume"/></svg></button>
         <input type="range" id="volSlider" min="0" max="100" value="50" aria-label="Bilgisayar ses düzeyi">
         <span id="volPercentLabel">50%</span>
       </div>
-      <div class="ambient"><time id="clock"></time><span id="forecast" hidden></span></div>
+      <div class="ambient"><time id="clock"></time></div>
       <div class="top-status" id="connection"><span class="status-dot"></span><span id="connectionText">Bağlanıyor...</span></div>
     </header>
     <div class="main-layout">
@@ -136,8 +136,13 @@
                 <span class="live-voice-tag">EON LIVE VOICE</span>
                 <div class="live-voice-controls-top">
                   <select id="liveVoicePersona" aria-label="Ses karakteri" title="Ses karakteri">
-                    <option value="tr-TR-AhmetNeural">Ahmet (Doğal Erkek)</option>
-                    <option value="tr-TR-EmelNeural">Emel (Doğal Kadın)</option>
+                    <option value="Kore">Kore (Stüdyo HD Kadın)</option>
+                    <option value="Aoede">Aoede (Stüdyo HD Sıcak Kadın)</option>
+                    <option value="Charon">Charon (Stüdyo HD Erkek)</option>
+                    <option value="Puck">Puck (Stüdyo HD Enerjik Erkek)</option>
+                    <option value="Zephyr">Zephyr (Stüdyo HD Akıcı)</option>
+                    <option value="tr-TR-AhmetNeural">Ahmet (Çevrimdışı Erkek)</option>
+                    <option value="tr-TR-EmelNeural">Emel (Çevrimdışı Kadın)</option>
                   </select>
                   <button type="button" id="liveVoiceCloseBtn" class="icon-button" aria-label="Canlı sesi kapat" title="Kapat (Esc)"><svg><use href="#i-x"/></svg></button>
                 </div>
@@ -427,94 +432,130 @@
         </section>
 
         <section class="page content-page" id="view-settings" aria-label="Ayarlar">
-          <div class="page-heading"><div><p class="eyebrow">KONTROL</p><h2>Ayarlar</h2><p>EON'u kullanmak istediğin gibi ayarla.</p></div></div>
+          <div class="page-heading">
+            <div><p class="eyebrow">KONTROL</p><h2>Ayarlar</h2><p>EON'u kendi çalışma düzenine göre sade biçimde yapılandır.</p></div>
+            <div class="segmented settings-tabs" id="settingsTabBar" role="tablist" aria-label="Ayar kategorileri">
+              <button type="button" role="tab" class="selected" data-stab="general">Genel &amp; Görünüm</button>
+              <button type="button" role="tab" data-stab="ai">Yapay Zekâ &amp; Modeller</button>
+              <button type="button" role="tab" data-stab="voice">Ses &amp; Canlı Konuşma</button>
+              <button type="button" role="tab" data-stab="privacy">Gizlilik &amp; Veri</button>
+            </div>
+          </div>
           <div class="settings-grid">
-            <div class="settings-card"><h3>Çalışma araçları, Ses &amp; Bilgisayar Sesi</h3>
-              <button class="outline-button" id="promptLibrary">Prompt kütüphanesi</button>
-              <button class="outline-button" id="focusMode">Odak modu</button>
-              <button class="outline-button" id="backupTools">Şifreli yedek</button>
+            <div class="settings-card" data-scard="general"><h3>Görünüm</h3>
+              <label>Tema <select id="theme"><option value="dark">Koyu</option><option value="light">Açık</option></select></label>
+              <label>Vurgu <select id="accent"><option value="ice">Buz mavisi</option><option value="mint">Nane</option><option value="violet">Menekşe</option></select></label>
+              <label><input id="compact" type="checkbox"> Kompakt görünüm</label>
+              <label><input id="reduced" type="checkbox"> Hareketi azalt</label>
+            </div>
+            <div class="settings-card" data-scard="general"><h3>Yanıt Biçimi &amp; Kişisel Yönergeler</h3>
+              <div class="segmented" id="lengthControls"><button type="button" data-style="kisa">Kısa</button><button type="button" data-style="normal">Normal</button><button type="button" data-style="detayli">Detaylı</button></div>
+              <label>Özel yönergeler<textarea id="instructions" class="field" maxlength="600" placeholder="Örn. Türkçe, kısa ve teknik yanıtlar ver."></textarea></label>
+              <label>Bağlam (token)<input class="field" id="contextLimit" type="number" min="512" max="8192"></label>
+              <label>Yanıt sınırı (token)<input class="field" id="outputLimit" type="number" min="1" max="1024"></label>
+              <button class="outline-button" id="savePrefs">Uygula</button>
+            </div>
+
+            <div class="settings-card hidden" data-scard="ai"><h3>Google Gemini (Öncelikli)</h3>
+              <p>Ollama kurmadan doğrudan Gemini API anahtarınla tüm sohbetleri ve Stüdyo HD seslendirmeyi kullanabilirsin.</p>
+              <label>Varsayılan Sağlayıcı Önceliği
+                <select id="preferredProviderSelect" class="field">
+                  <option value="gemini">Google Gemini Öncelikli (Önerilen)</option>
+                  <option value="ollama">Yerel Ollama Öncelikli</option>
+                </select>
+              </label>
+              <label>Google Gemini API Anahtarı (Windows DPAPI ile Şifrelenir)
+                <div class="path-row">
+                  <input type="password" id="directApiKeyInput" class="field" placeholder="AIzaSy..." autocomplete="off">
+                  <button class="primary-button" id="directKeySaveBtn" type="button">Anahtarı Kaydet</button>
+                </div>
+              </label>
+              <select id="cloudModel" aria-label="Google Gemini modeli"></select>
+              <div class="button-row">
+                <button class="outline-button" id="cloudNew">Gemini Sohbetini Etkinleştir</button>
+                <button class="outline-button" id="localNew">Yerel Sohbet Aç</button>
+                <button class="outline-button" id="cloudTest">Bağlantıyı Test Et</button>
+                <button class="text-button" id="keyDelete">Anahtarı Kaldır</button>
+              </div>
+              <label><input type="checkbox" id="shareMemory"> Genel hafızayı Gemini sohbetine dahil et</label>
+              <label><input type="checkbox" id="sharePrefs"> Genel ve aktif proje yönergelerini Gemini bağlamına ekle</label>
+              <div class="button-row">
+                <button class="text-button" id="cloudSample">Kısa yanıt testi</button>
+                <button class="text-button" id="compareModels">Yerel ile karşılaştır</button>
+                <button class="text-button" id="cloudPrivacyOff" hidden>Bulut paylaşımını kapat</button>
+              </div>
+              <p id="comparison" role="status"></p>
+            </div>
+            <div class="settings-card hidden" data-scard="ai"><h3>Yerel Ollama &amp; Donanım Önerisi</h3>
+              <label>Kurulu Yerel Model <select id="settingsModelSelect" aria-label="Yerel model seç"></select></label>
+              <label>Ollama yanıt sonrası bellek <select id="keepAlive"><option value="0">Hemen boşalt</option><option value="1m">1 dakika tut</option><option value="3m">3 dakika tut</option><option value="5m">5 dakika tut</option><option value="15m">15 dakika tut</option></select></label>
+              <div class="button-row">
+                <button type="button" class="outline-button" id="reloadModels">Listeyi Yenile</button>
+                <button class="outline-button" id="unloadModel">Modeli Boşalt</button>
+                <button class="outline-button" id="runtimeStatus">Sistem Durumu</button>
+              </div>
+              <p id="healthInfo" role="status"></p>
+              <div id="hardwareRecommendationBox" class="subtle-box"></div>
+            </div>
+
+            <div class="settings-card hidden" data-scard="voice"><h3>Stüdyo HD Ses &amp; Canlı Konuşma</h3>
+              <label>Ses Karakteri (Gemini Stüdyo HD &amp; Çevrimdışı Yedek)
+                <select id="voicePersonaSelect" class="field">
+                  <option value="Kore">Kore — Stüdyo HD Kadın (ElevenLabs Seviyesi)</option>
+                  <option value="Aoede">Aoede — Stüdyo HD Sıcak Kadın</option>
+                  <option value="Charon">Charon — Stüdyo HD Doğal Erkek</option>
+                  <option value="Puck">Puck — Stüdyo HD Enerjik Erkek</option>
+                  <option value="Zephyr">Zephyr — Stüdyo HD Akıcı Asistan</option>
+                  <option value="tr-TR-AhmetNeural">Ahmet — Çevrimdışı Erkek</option>
+                  <option value="tr-TR-EmelNeural">Emel — Çevrimdışı Kadın</option>
+                </select>
+              </label>
+              <div class="button-row">
+                <button class="primary-button" id="voiceSampleBtn" type="button">Stüdyo Sesi Dene</button>
+                <button class="outline-button" id="ttsStopBtn" type="button">Sesi Durdur</button>
+              </div>
+              <p class="note-small">Gemini anahtarınla Stüdyo HD (`gemini-3.8-flash-tts`) kullanılır; çevrimdışı modda yerel sese geçilir.</p>
+            </div>
+            <div class="settings-card hidden" data-scard="voice"><h3>Bilgisayar Sesi &amp; Araçlar</h3>
               <label>Bilgisayar Ses Düzeyi (Anlık Windows Master Ses)
                 <div class="path-row">
                   <input type="range" id="settingsVolSlider" min="0" max="100" value="50" class="field">
                   <button class="outline-button" id="settingsVolMuteBtn" type="button">Sesi Kıs / Aç</button>
                 </div>
               </label>
-              <label>Doğal Ses Karakteri (Yerleşik &amp; Sınırsız)
-                <select id="voicePersonaSelect" class="field">
-                  <option value="tr-TR-AhmetNeural">Ahmet — Doğal Erkek</option>
-                  <option value="tr-TR-EmelNeural">Emel — Doğal Kadın</option>
-                  <option value="en-US-AndrewMultilingualNeural">Andrew — Çok Dilli Doğal Erkek</option>
-                  <option value="en-US-AvaMultilingualNeural">Ava — Çok Dilli Doğal Kadın</option>
-                </select>
-              </label>
               <div class="button-row">
-                <button class="outline-button" id="voiceSampleBtn" type="button">Doğal Sesi Dene</button>
-                <button class="outline-button" id="ttsStopBtn" type="button">Sesi Durdur</button>
+                <button class="outline-button" id="promptLibrary">Prompt kütüphanesi</button>
+                <button class="outline-button" id="focusMode">Odak modu</button>
               </div>
-              <p class="note-small">Yerleşik doğal ses motoru üçüncü taraf sunuculara metin göndermeden yerel çalışır.</p>
             </div>
-            <div class="settings-card"><h3>AI Sağlayıcısı (Google Gemini Öncelikli &amp; İsteğe Bağlı Ollama)</h3>
-              <p>Google Gemini API anahtarınla Ollama kurmadan hemen başlayabilir veya donanımına uygun önerilen yerel Ollama modellerini kullanabilirsin.</p>
-              <label>Varsayılan Sağlayıcı Önceliği
-                <select id="preferredProviderSelect" class="field">
-                  <option value="gemini">Google Gemini Öncelikli (Önerilen — Ollama Zorunlu Değil)</option>
-                  <option value="ollama">Yerel Ollama Öncelikli</option>
-                </select>
-              </label>
-              <label>Google Gemini API Anahtarı (Windows DPAPI ile Şifrelenir)
-                <div class="path-row">
-                  <input type="password" id="directApiKeyInput" class="field" placeholder="AIzaSy... (Tarayıcıda saklanmaz, doğrudan DPAPI kasasına yazılır)" autocomplete="off">
-                  <button class="primary-button" id="directKeySaveBtn" type="button">Anahtarı Kaydet</button>
-                </div>
-              </label>
+
+            <div class="settings-card hidden" data-scard="privacy"><h3>Gizlilik &amp; Şifreli Kasa</h3>
+              <p><span class="storageStatus"></span> Uygulama yolları yerel ayar dosyasına kaydedilir. Gemini yalnız onaylanan bulut sohbetlerinde kullanılır.</p>
               <div class="button-row">
-                <button class="outline-button" id="cloudNew">Gemini Sohbetini Etkinleştir</button>
-                <button class="outline-button" id="localNew">Yerel Sohbet Aç</button>
-                <button class="outline-button" id="cloudTest">Google Bağlantısını Test Et</button>
-                <button class="text-button" id="keyEnter">Ayrı Pencerede Anahtar Gir</button>
-                <button class="text-button" id="keyDelete">Anahtarı Kaldır</button>
+                <button class="outline-button" id="backupTools">Şifreli Yedek (.eonbackup)</button>
+                <button type="button" class="outline-button" id="wipeAllDataBtn">Tüm Yerel Verileri ve Anahtarları Sil</button>
               </div>
-              <select id="cloudModel" aria-label="Google Gemini modeli"></select>
-              <label><input type="checkbox" id="shareMemory"> Bu Gemini sohbetine genel hafızayı dahil et</label>
-              <label><input type="checkbox" id="sharePrefs"> Genel ve aktif proje yönergelerini Gemini bağlamına ekle</label>
-              <button class="text-button" id="cloudSample">Kısa gerçek yanıtı dene</button>
-              <button class="text-button" id="compareModels">Örnek soruyla karşılaştır</button><p id="comparison" role="status"></p>
-              <button class="text-button" id="cloudPrivacyOff" hidden>Bulut paylaşım iznini kapat</button>
-              <div id="hardwareRecommendationBox" class="subtle-box"></div>
+              <p class="note-small">Tam Çevrimdışı Mod (Kill-Switch) ve ağ denetimi için Sistem Sağlığı sekmesini kullanabilirsin.</p>
             </div>
-            <div class="settings-card"><h3>Model belleği ve sistem sağlığı</h3>
-              <label>Ollama yanıt sonrası <select id="keepAlive"><option value="0">Hemen boşalt</option><option value="1m">1 dakika tut</option><option value="3m">3 dakika tut</option><option value="5m">5 dakika tut</option><option value="15m">15 dakika tut</option></select></label>
-              <p>Hemen boşaltma belleği serbest bırakır. Sonraki istek model yeniden yüklenirken gecikebilir.</p>
-              <button class="outline-button" id="unloadModel">Seçili yerel modeli boşalt</button>
-              <button class="outline-button" id="runtimeStatus">Sistem sağlığını göster</button><p id="healthInfo" role="status"></p>
+            <div class="settings-card hidden" data-scard="privacy"><h3>Oturum İstatistikleri</h3>
+              <div class="stats-grid"><div><strong id="countMessages">0</strong><span>Mesaj</span></div><div><strong id="countRetries">0</strong><span>Yenileme</span></div><div><strong id="countSummaries">0</strong><span>Özet</span></div><div><strong id="countMinutes">0</strong><span>Dakika</span></div></div>
             </div>
-            <div class="settings-card"><h3>Projeler ve modlar</h3>
-              <button class="outline-button" id="manageProjects">Projeleri yönet</button>
-              <button class="outline-button" id="manageModes">Modları yönet</button></div>
-            <div class="settings-card"><h3>Görünüm</h3>
-              <label>Tema <select id="theme"><option value="dark">Koyu</option><option value="light">Açık</option></select></label>
-              <label>Vurgu <select id="accent"><option value="ice">Buz mavisi</option><option value="mint">Nane</option><option value="violet">Menekşe</option></select></label>
-              <label><input id="compact" type="checkbox"> Kompakt görünüm</label>
-              <label><input id="reduced" type="checkbox"> Hareketi azalt</label></div>
-            <div class="settings-card"><h3>Model tercihleri</h3>
-              <label>Özel yönergeler<textarea id="instructions" class="field" maxlength="600"></textarea></label>
-              <label>Bağlam (token)<input class="field" id="contextLimit" type="number" min="512" max="8192"></label>
-              <label>Yanıt sınırı (token)<input class="field" id="outputLimit" type="number" min="1" max="1024"></label>
-              <button class="outline-button" id="savePrefs">Uygula</button></div>
-            <div class="settings-card"><h3>Hava durumu</h3>
-              <label><input type="checkbox" id="weatherConsent"> Girdiğim koordinatların Open-Meteo’ya gönderilmesine izin veriyorum.</label>
-              <label>Şehir <select id="city"><option value="">Elle koordinat</option></select></label>
-              <label>Enlem<input class="field" id="lat" type="number" min="-90" max="90" step="any"></label>
-              <label>Boylam<input class="field" id="lon" type="number" min="-180" max="180" step="any"></label>
-              <button class="outline-button" id="weatherSave">Konum tercihini kaydet</button>
-              <button class="outline-button" disabled id="weatherRead">Hava durumunu getir</button></div>
-            <div class="settings-card"><h3>Yanıt uzunluğu</h3><p>Bu oturum için cevapların ayrıntı seviyesini seç.</p><div class="segmented" id="lengthControls"><button type="button" data-style="kisa">Kısa</button><button type="button" data-style="normal">Normal</button><button type="button" data-style="detayli">Detaylı</button></div></div>
-            <div class="settings-card"><h3>Yerel model</h3><p>Yalnızca Ollama'da indirilmiş modeller görüntülenir.</p><select id="settingsModelSelect" aria-label="Yerel model seç"></select><button type="button" class="inline-link" id="reloadModels">Model listesini yenile</button></div>
-            <div class="settings-card"><h3>Oturum bilgisi</h3><div class="stats-grid"><div><strong id="countMessages">0</strong><span>Mesaj</span></div><div><strong id="countRetries">0</strong><span>Yenileme</span></div><div><strong id="countSummaries">0</strong><span>Özet</span></div><div><strong id="countMinutes">0</strong><span>Dakika</span></div></div></div>
-            <div class="settings-card"><h3>Gizlilik</h3><p><span class="storageStatus"></span> Uygulama yolları yerel ayar dosyasına kaydedilir. Gemini yalnız onaylanan bulut sohbetlerinde kullanılır.</p><p class="note-small">Ollama'nın kendi kayıtları ve Windows'un sistem günlükleri bu garantinin dışında olabilir.</p></div>
           </div>
         </section>
       </main>
+      <aside id="canvasDrawer" class="canvas-drawer hidden" aria-label="Canvas Paneli">
+        <div class="canvas-header">
+          <div><span class="live-voice-tag">CANVAS</span><h3 id="canvasTitle">Belge &amp; Kod</h3></div>
+          <div class="canvas-actions">
+            <button type="button" id="canvasPreviewBtn" class="outline-button">Önizle</button>
+            <button type="button" id="canvasCopyBtn" class="outline-button">Kopyala</button>
+            <button type="button" id="canvasStudioBtn" class="primary-button">Stüdyo'da Üret</button>
+            <button type="button" id="canvasCloseBtn" class="icon-button" aria-label="Canvas'ı kapat"><svg><use href="#i-x"/></svg></button>
+          </div>
+        </div>
+        <textarea id="canvasEditor" class="canvas-editor" spellcheck="false" aria-label="Canvas düzenleyici"></textarea>
+        <div id="canvasPreviewPane" class="canvas-preview-pane hidden"></div>
+      </aside>
     </div>
     <div class="toast hidden" id="toast" role="status"></div>
     <div class="modal-overlay hidden" id="appModal" role="presentation">

@@ -643,10 +643,56 @@ function notifyLiveStreamFinished() {
   }
 }
 
+let activeRecorder = null;
+async function toggleMediaRecorderFallback(onResult) {
+  if (activeRecorder) {
+    try { activeRecorder.stop(); } catch {}
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+    toast('Tarayıcıda mikrofon kaydı desteklenmiyor.');
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    const chunks = [];
+    const mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+    const rec = new MediaRecorder(stream, {mimeType: mime});
+    activeRecorder = rec;
+    el('voiceIndicator')?.classList.remove('hidden');
+    el('pttButton')?.classList.add('active');
+    rec.ondataavailable = e => { if (e.data?.size) chunks.push(e.data); };
+    rec.onstop = async () => {
+      activeRecorder = null;
+      stream.getTracks().forEach(t => t.stop());
+      el('voiceIndicator')?.classList.add('hidden');
+      el('pttButton')?.classList.remove('active');
+      if (!chunks.length) return;
+      try {
+        toast('Ses metne dönüştürülüyor...');
+        const buf = new Uint8Array(await new Blob(chunks, {type: mime}).arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < buf.length; i += 8192) bin += String.fromCharCode(...buf.subarray(i, i + 8192));
+        const res = await request('/api/voice', {action:'transcribe', audio_base64:btoa(bin), mime});
+        if (res.text) onResult(res.text);
+        else toast('Konuşma algılanamadı.');
+      } catch (err) { toast(err.message); }
+    };
+    rec.start();
+    setTimeout(() => { if (activeRecorder === rec) rec.stop(); }, 15000);
+  } catch {
+    toast('Mikrofon erişimi alınamadı.');
+  }
+}
+
 function togglePushToTalk() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const indicator = el('voiceIndicator');
   const btn = el('pttButton');
+  if (activeRecorder) {
+    toggleMediaRecorderFallback(() => {});
+    return;
+  }
   if (activeRecognition) {
     try { activeRecognition.stop(); } catch {}
     activeRecognition = null;
@@ -655,7 +701,15 @@ function togglePushToTalk() {
     return;
   }
   if (!SR) {
-    openLiveVoiceOverlay();
+    if (state?.gemini_configured || state?.gemini_models_ready) {
+      toggleMediaRecorderFallback(txt => {
+        const inp = el('messageInput');
+        inp.value = (inp.value ? inp.value + ' ' : '') + txt.trim();
+        inp.dispatchEvent(new Event('input'));
+      });
+    } else {
+      openLiveVoiceOverlay();
+    }
     return;
   }
   try {
@@ -702,16 +756,28 @@ function togglePushToTalk() {
 let activeAudioPlayer = null;
 let liveSentenceQueue = [];
 let liveSentenceBusy = false;
+let livePrefetchCache = new Map();
 
 function stopVoicePlayback() {
   liveSentenceQueue = [];
   liveSentenceBusy = false;
+  livePrefetchCache.clear();
   if (activeAudioPlayer) {
     try { activeAudioPlayer.pause(); activeAudioPlayer.src = ''; } catch {}
     activeAudioPlayer = null;
   }
   if ('speechSynthesis' in window) {
     try { window.speechSynthesis.cancel(); } catch {}
+  }
+}
+
+function prefetchNextSentence() {
+  for (let i = 0; i < Math.min(2, liveSentenceQueue.length); i++) {
+    const nextText = liveSentenceQueue[i];
+    if (!nextText || livePrefetchCache.has(nextText)) continue;
+    const voice = el('liveVoicePersona')?.value || el('voicePersonaSelect')?.value || state?.voice_state?.selected || 'Kore';
+    const promise = request('/api/voice', {action:'speak', text:nextText, voice}).catch(() => null);
+    livePrefetchCache.set(nextText, promise);
   }
 }
 
@@ -747,12 +813,15 @@ async function processLiveSentenceQueue() {
     setLiveVoiceUiState('speaking', 'Konuşuyor…', 'Kesmek veya yeni soru sormak için küreye dokunun.');
   }
   const text = liveSentenceQueue.shift();
-  const voice = el('liveVoicePersona')?.value || el('voicePersonaSelect')?.value || state?.voice_state?.selected || 'tr-TR-AhmetNeural';
+  const voice = el('liveVoicePersona')?.value || el('voicePersonaSelect')?.value || state?.voice_state?.selected || 'Kore';
+  prefetchNextSentence();
   try {
-    const res = await request('/api/voice', {action:'speak', text, voice});
-    if (res.audio_base64) {
+    const cached = livePrefetchCache.get(text);
+    livePrefetchCache.delete(text);
+    const res = cached ? await cached : await request('/api/voice', {action:'speak', text, voice});
+    if (res && res.audio_base64) {
       const bytes = Uint8Array.from(atob(res.audio_base64), c => c.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes], {type: res.mime || 'audio/mpeg'}));
+      const url = URL.createObjectURL(new Blob([bytes], {type: res.mime || 'audio/wav'}));
       await new Promise(resolve => {
         const audio = new Audio(url);
         activeAudioPlayer = audio;
@@ -787,7 +856,39 @@ async function processLiveSentenceQueue() {
 function enqueueLiveSentence(sentence) {
   if (!sentence || sentence.length < 2) return;
   liveSentenceQueue.push(sentence);
+  prefetchNextSentence();
   processLiveSentenceQueue();
+}
+
+function openCanvasDrawer(content, title = 'Canvas') {
+  const drawer = el('canvasDrawer');
+  if (!drawer) return;
+  el('canvasTitle').textContent = title || 'Canvas';
+  el('canvasEditor').value = content || '';
+  el('canvasEditor').classList.remove('hidden');
+  el('canvasPreviewPane')?.classList.add('hidden');
+  if (el('canvasPreviewBtn')) el('canvasPreviewBtn').textContent = 'Önizle';
+  drawer.classList.remove('hidden');
+  el('canvasEditor').focus();
+}
+
+function showMemorySuggestionChip(suggestedText) {
+  const log = el('chatLog');
+  if (!log || !suggestedText) return;
+  const chip = document.createElement('div');
+  chip.className = 'memory-suggest-pill';
+  const span = document.createElement('span');
+  span.textContent = `Hafızaya kaydedilsin mi? “${suggestedText.slice(0, 65)}${suggestedText.length > 65 ? '…' : ''}”`;
+  const saveBtn = action('Kaydet', async () => {
+    const res = await request('/api/memory', {value: suggestedText, category: 'tercih', source: 'otomatik-oneri'});
+    renderState(res);
+    chip.remove();
+    toast('Hafızaya kaydedildi.');
+  });
+  const dismissBtn = action('×', () => chip.remove());
+  chip.append(span, saveBtn, dismissBtn);
+  log.appendChild(chip);
+  log.scrollTop = log.scrollHeight;
 }
 
 async function inspectKnowledgeCitation(docId, chunkIndex = 0) {
@@ -836,13 +937,13 @@ async function speakText(text) {
     const res = await request('/api/voice', {action:'speak', text, voice});
     if (res.audio_base64) {
       const bytes = Uint8Array.from(atob(res.audio_base64), c => c.charCodeAt(0));
-      const url = URL.createObjectURL(new Blob([bytes], {type: res.mime || 'audio/mpeg'}));
+      const url = URL.createObjectURL(new Blob([bytes], {type: res.mime || 'audio/wav'}));
       const audio = new Audio(url);
       activeAudioPlayer = audio;
       audio.onended = () => { URL.revokeObjectURL(url); if (activeAudioPlayer === audio) activeAudioPlayer = null; };
       audio.onerror = () => { URL.revokeObjectURL(url); browserNaturalSpeak(res.cleaned_text || text, voice); };
       await audio.play();
-      toast('Neural HD doğal seslendirme oynatılıyor.');
+      toast(res.engine === 'gemini_studio_tts' ? `Stüdyo HD seslendirme (${res.voice}) oynatılıyor.` : 'Doğal seslendirme oynatılıyor.');
       return;
     }
     if (res.engine === 'browser_natural') {

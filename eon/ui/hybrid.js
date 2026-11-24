@@ -126,19 +126,21 @@ function renderHybrid() {
   }
   if (!weatherLoaded) {
     weatherLoaded = true;
-    el('weatherConsent').checked = Boolean(pref.enabled);
-    el('weatherRead').disabled = !pref.enabled;
-    el('lat').value = pref.lat ?? '';
-    el('lon').value = pref.lon ?? '';
+    if (el('weatherConsent')) el('weatherConsent').checked = Boolean(pref.enabled);
+    if (el('weatherRead')) el('weatherRead').disabled = !pref.enabled;
+    if (el('lat')) el('lat').value = pref.lat ?? '';
+    if (el('lon')) el('lon').value = pref.lon ?? '';
   }
 }
 function wireHybrid() {
   function bind(id, fn) {
-    el(id).onclick = async () => {
+    const node = el(id);
+    if (!node) return;
+    node.onclick = async () => {
       const button = el(id);
       button.disabled = true;
       try { await fn(); } catch(error) { toast(error.message); }
-      finally { button.disabled = id === 'weatherRead' && !el('weatherConsent').checked; }
+      finally { button.disabled = id === 'weatherRead' && !el('weatherConsent')?.checked; }
     };
   }
   bind('keyEnter', async()=>{
@@ -218,28 +220,32 @@ function wireHybrid() {
   }
   bind('unloadModel',()=>health('unload'));
   bind('runtimeStatus',()=>health('status'));
-  cities.forEach(([name],i)=>el('city').append(new Option(name,i)));
-  el('city').onchange=()=>{
-    if(el('city').value!=='') {
-      const [,lat,lon]=cities[Number(el('city').value)];
-      el('lat').value=lat; el('lon').value=lon;
-    }
-  };
+  if (el('city')) {
+    cities.forEach(([name],i)=>el('city').append(new Option(name,i)));
+    el('city').onchange=()=>{
+      if(el('city').value!=='') {
+        const [,lat,lon]=cities[Number(el('city').value)];
+        if (el('lat')) el('lat').value=lat; if (el('lon')) el('lon').value=lon;
+      }
+    };
+  }
   async function saveWeather(enabled) {
-    renderState(await request('/api/weather/preferences',{enabled,lat:el('lat').valueAsNumber,lon:el('lon').valueAsNumber}));
-    el('weatherRead').disabled=!enabled;
+    renderState(await request('/api/weather/preferences',{enabled,lat:el('lat')?.valueAsNumber,lon:el('lon')?.valueAsNumber}));
+    if (el('weatherRead')) el('weatherRead').disabled=!enabled;
     if (el('forecast')) {
       el('forecast').hidden = !enabled;
       if(!enabled) el('forecast').textContent='';
     }
   }
-  el('weatherConsent').onchange=async()=>{
-    weatherEpoch++;
-    el('weatherRead').disabled=!el('weatherConsent').checked;
-    if (!el('weatherConsent').checked) {
-      try {await saveWeather(false);} catch(error){toast(error.message);}
-    }
-  };
+  if (el('weatherConsent')) {
+    el('weatherConsent').onchange=async()=>{
+      weatherEpoch++;
+      if (el('weatherRead')) el('weatherRead').disabled=!el('weatherConsent').checked;
+      if (!el('weatherConsent').checked) {
+        try {await saveWeather(false);} catch(error){toast(error.message);}
+      }
+    };
+  }
   bind('weatherSave',async()=>{await saveWeather(el('weatherConsent').checked);toast('Hava durumu tercihi kaydedildi.');});
   bind('weatherRead',async()=>{
     const version=++weatherEpoch;

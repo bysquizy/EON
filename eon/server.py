@@ -37,6 +37,8 @@ class EonServer(ThreadingHTTPServer):
         self.service = service
         self.token = secrets.token_urlsafe(32)
         self.access = secrets.token_urlsafe(32)
+        self.boot_code = secrets.token_urlsafe(24)
+        self.boot_used = False
 
     @property
     def origin(self):
@@ -91,9 +93,23 @@ class EonHandler(BaseHTTPRequestHandler):
             self._headers(200, media, len(content))
             self.wfile.write(content)
             return
-        if path.startswith("/api/") and path != "/api/health" and not self._authorized():
+        if path.startswith("/api/") and path not in ("/api/health", "/api/bootstrap") and not self._authorized():
             return self._json(403, {"error":"EON başlatıcısındaki bağlantıyı kullan."})
         if path == "/api/bootstrap":
+            query = urlsplit(self.path).query
+            boot_param = ""
+            for part in query.split("&"):
+                if part.startswith("boot="):
+                    boot_param = part[5:]
+                    break
+            if boot_param and not self.server.boot_used and hmac.compare_digest(boot_param.encode(), self.server.boot_code.encode()):
+                self.server.boot_used = True
+                return self._json(200, {"token": self.server.token, "access": self.server.access,
+                                        "state": self.server.service.snapshot(),
+                                        "models": {"models": [], "selected": self.server.service.settings.model, "connected": False},
+                                        "apps": []})
+            if not self._authorized():
+                return self._json(403, {"error":"EON başlatıcısındaki bağlantıyı kullan."})
             return self._json(200, {"token": self.server.token, "state": self.server.service.snapshot(),
                                     "models": {"models": [], "selected": self.server.service.settings.model, "connected": False},
                                     "apps": []})
@@ -134,7 +150,7 @@ class EonHandler(BaseHTTPRequestHandler):
             route_path = urlsplit(self.path).path
             if route_path == "/api/backup/restore":
                 limit = 24 * 1024 * 1024
-            elif route_path in ("/api/knowledge", "/api/stream", "/api/studio", "/api/actions"):
+            elif route_path in ("/api/knowledge", "/api/stream", "/api/studio", "/api/actions", "/api/voice"):
                 limit = 12 * 1024 * 1024
             else:
                 limit = 64000
@@ -169,7 +185,11 @@ class EonHandler(BaseHTTPRequestHandler):
                                               profile=payload.get("profile"),
                                               emit=lambda part: event({"delta": part}),
                                               ready=lambda: event({"ready": True}))
-                    event({"state": result["state"], "sources": result.get("sources", [])})
+                    event({
+                        "state": result["state"],
+                        "sources": result.get("sources", []),
+                        "memory_suggestion": result.get("memory_suggestion"),
+                    })
                 except (ValueError, LocalModelError) as exc:
                     event({"error": str(exc)})
                 except OSError:

@@ -64,6 +64,8 @@ class LocalOllama:
 
     def capabilities(self, model_name: str | None = None) -> dict:
         name = model_name or self.settings.model
+        if name in self._capabilities_cache:
+            return dict(self._capabilities_cache[name])
         low = name.casefold()
         caps = {
             "provider": "ollama",
@@ -90,6 +92,7 @@ class LocalOllama:
                         caps["vision"] = True
         except LocalModelError:
             pass
+        self._capabilities_cache[name] = dict(caps)
         return caps
 
     def embed(self, text: str, model_name: str | None = None) -> list[float]:

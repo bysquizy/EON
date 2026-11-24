@@ -19,7 +19,7 @@ from .launcher import ApplicationRegistry
 from .knowledge import KnowledgeBase, KnowledgeError, sanitize_untrusted_doc_text, windows_native_ocr
 from .actions import ActionCenter, ActionError, redact_text
 from .studio_gen import STUDIO_TEMPLATES, preview_studio_document, save_or_encode_studio_document, StudioError
-from .productivity import ProductivityCenter, VoiceEngine, system_memory_info, validate_vision_image
+from .productivity import ProductivityCenter, STUDIO_VOICE_MAP, VoiceEngine, system_memory_info, validate_vision_image
 
 
 class Generation:
@@ -96,6 +96,7 @@ class EonService:
         self.pre_050_backup = False
         self.pre_060_backup = False
         self.vault = None
+        self.vault_path = Path(vault_path) if vault_path else None
         self.kb_vault_path = Path(vault_path).with_name("knowledge.dpapi") if vault_path else None
         self.storage_notice = "Yalnızca bu oturumda saklanır."
         if vault_path:
@@ -538,6 +539,61 @@ class EonService:
                 return self.snapshot()
         if action == "desktop_shortcut":
             return self.create_desktop_shortcut()
+        if action == "wipe_all":
+            if not self._generation_lock.acquire(blocking=False):
+                raise ValueError("Sıfırlamadan önce yanıtın tamamlanmasını bekle.")
+            try:
+                with self._lock:
+                    for job in self.jobs.values():
+                        job.cancel()
+                    if self.secret_path:
+                        try:
+                            secret(self.secret_path, "")
+                        except Exception:
+                            pass
+                        try:
+                            self.secret_path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                    if self.vault:
+                        self.vault.close()
+                        self.vault = None
+                    if self.vault_path:
+                        for p in self.vault_path.parent.glob(f"{self.vault_path.stem}*.dpapi"):
+                            try:
+                                p.unlink(missing_ok=True)
+                            except OSError:
+                                pass
+                        try:
+                            self.vault_path.with_suffix(".lock").unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                    if self.kb_vault_path and self.kb_vault_path.exists():
+                        try:
+                            self.kb_vault_path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                    self.chats = ConversationCollection()
+                    self.workspace = Workspace()
+                    self.memory.clear()
+                    self.memory_meta.clear()
+                    self.instructions = ""
+                    self.cloud_chats.clear()
+                    self.cloud_allowed.clear()
+                    self.cloud_sharing.clear()
+                    self.cloud_models = []
+                    self.extras = {"prompts":{}, "favorite_apps":[], "chat_options":{}, "projects":{},
+                                   "gemini":{"consent":False,"memory":False,"instructions":False,"model":""}}
+                    self.knowledge = KnowledgeBase()
+                    self.actions = ActionCenter(launcher=self.launcher)
+                    self.productivity = ProductivityCenter()
+                    self.setup = {"provider": "", "done": False}
+                    self.request_log.clear()
+                    self.network_log.clear()
+                    self.last_error = ""
+                    return self.snapshot()
+            finally:
+                self._generation_lock.release()
         if action == "unload":
             if not self._generation_lock.acquire(blocking=False):
                 raise ValueError("Boşaltmadan önce yanıtın tamamlanmasını bekle.")
@@ -957,7 +1013,6 @@ class EonService:
     def open_chat(self, ident: str) -> dict:
         with self._lock:
             self.chats.open(ident)
-            self._save()
             return self.snapshot()
 
     def delete_chat(self, ident: str) -> dict:
@@ -1313,8 +1368,12 @@ class EonService:
                     self.regenerated += 1
                 else:
                     self.total_turns += 1
+                mem_suggestion = self._detect_memory_suggestion(text)
                 self._save()
-                return {"message": answer, "sources": all_sources, "state": self.snapshot()}
+                res_obj = {"message": answer, "sources": all_sources, "state": self.snapshot()}
+                if mem_suggestion:
+                    res_obj["memory_suggestion"] = mem_suggestion
+                return res_obj
         except Exception as exc:
             with self._lock:
                 self.last_error = redact_text(str(exc))
@@ -1439,6 +1498,24 @@ class EonService:
         else:
             raise ValueError("Komut bulunamadı. /yardim yaz.")
         return {"message": msg, "state": self.snapshot()}
+
+    def _detect_memory_suggestion(self, user_text: str) -> str | None:
+        import re
+        if not isinstance(user_text, str):
+            return None
+        clean = user_text.strip()
+        if len(clean) < 10 or len(clean) > 260:
+            return None
+        patterns = (
+            r"^(?:benim adım|adım|ismim)\s+([A-ZÇĞİÖŞÜa-zçğıöşü0-9 _-]{2,40})",
+            r"^(?:tercihim|her zaman|bundan sonra|not al|hatırla)\s*[:,-]?\s*(.+)$",
+            r"(?:mesleğim|işim|çalıştığım dil|kullandığım dil)\s*[:=]?\s*(.+)$",
+        )
+        for pat in patterns:
+            if re.search(pat, clean, re.I):
+                if not any(clean.casefold() == v.casefold() for v in self.memory.values()):
+                    return clean
+        return None
 
     def _detect_inline_action_proposal(self, user_text: str, assistant_text: str) -> dict | None:
         import re
@@ -1683,8 +1760,32 @@ class EonService:
     def voice_action(self, payload: dict) -> dict:
         op = payload.get("action")
         if op == "speak":
-            engine = "sapi" if payload.get("engine") == "sapi" else "browser"
-            return self.voice.speak(payload.get("text", ""), voice=payload.get("voice"), engine=engine)
+            engine = payload.get("engine", "auto")
+            text = payload.get("text", "")
+            voice = payload.get("voice")
+            local_res = self.voice.speak(text, voice=voice, engine="sapi" if engine == "sapi" else "browser")
+            if engine not in ("sapi", "browser_only") and not self.offline_kill_switch and self.secret_path and self.secret_path.exists():
+                key = secret(self.secret_path)
+                if key:
+                    try:
+                        self._require_online_allowed("generativelanguage.googleapis.com", "Gemini Stüdyo HD Seslendirme")
+                        chosen = local_res.get("voice") or self.voice.voice
+                        studio_voice = STUDIO_VOICE_MAP.get(chosen, "Kore")
+                        style = str(payload.get("style") or "warm, natural, expressive conversational tone")[:160]
+                        synth = Gemini(key).synthesize(local_res["cleaned_text"], voice=studio_voice, style=style)
+                        return {
+                            "supported": True,
+                            "speaking": True,
+                            "engine": "gemini_studio_tts",
+                            "voice": studio_voice,
+                            "model": synth["model"],
+                            "cleaned_text": local_res["cleaned_text"],
+                            "audio_base64": synth["audio_base64"],
+                            "mime": synth["mime"],
+                        }
+                    except Exception:
+                        pass
+            return local_res
         if op == "stop":
             return self.voice.stop()
         if op == "configure":
@@ -1697,6 +1798,17 @@ class EonService:
                 return {"voice_state": res, "state": self.snapshot()}
         if op == "voices":
             return self.voice.voices()
+        if op == "transcribe":
+            if self.offline_kill_switch:
+                raise ValueError("Tam Çevrimdışı Mod etkin; ses dökümü için dış ağ kapalı.")
+            if not self.secret_path or not self.secret_path.exists():
+                raise ValueError("Ses dökümü için Gemini API anahtarı gerekli.")
+            key = secret(self.secret_path)
+            if not key:
+                raise ValueError("Gemini API anahtarı bulunamadı.")
+            self._require_online_allowed("generativelanguage.googleapis.com", "Gemini Ses-Metin Dökümü")
+            text = Gemini(key).transcribe(payload.get("audio_base64", ""), payload.get("mime", "audio/webm"))
+            return {"text": text}
         raise ValueError("Geçersiz ses işlemi.")
 
     def hardware_profile(self) -> dict:

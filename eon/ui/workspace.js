@@ -242,8 +242,8 @@ function commandPalette() {
 function wireWorkspace() {
   el('commandOpen').onclick = commandPalette;
   el('chatOptions').onclick = chatOptions;
-  el('manageProjects').onclick = ()=>manage('project');
-  el('manageModes').onclick = ()=>manage('mode');
+  if (el('manageProjects')) el('manageProjects').onclick = ()=>manage('project');
+  if (el('manageModes')) el('manageModes').onclick = ()=>manage('mode');
   for (const id of ['favoritesOnly','projectFilter']) el(id).onchange = renderHistory;
   for (const id of ['theme','accent','compact','reduced']) el(id).onchange = async () => {
     try {

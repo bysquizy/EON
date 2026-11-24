@@ -1,2 +1,2 @@
 """EON local assistant."""
-__version__ = "0.6.2"
+__version__ = "0.8.0"

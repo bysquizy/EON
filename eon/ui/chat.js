@@ -226,6 +226,9 @@ async function streamAnswer(text, index = null) {
               sentenceBuf = '';
             }
             if (state.active_chat_id === id && event.state.active_chat_id === id) renderState(event.state);
+            if (event.memory_suggestion && typeof showMemorySuggestionChip === 'function') {
+              setTimeout(() => showMemorySuggestionChip(event.memory_suggestion), 60);
+            }
           }
         }
       }

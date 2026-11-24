@@ -1,4 +1,4 @@
-/* EON v0.6.2 — Modular UI Extensions:
+/* EON v0.8.0 — Modular UI Extensions:
    - In-process Windows Core Audio Master Volume slider + instant mute
    - Gemini-first setup flow + hardware-tuned local Ollama model recommendations
    - Offline Kill-Switch & Network Inspector
@@ -202,6 +202,64 @@ function wireV060Modules() {
       try {
         const res = await request('/api/runtime', {action:'desktop_shortcut'});
         toast(`Masaüstü kısayolu oluşturuldu: ${res.shortcut}`);
+      } catch (error) { toast(error.message); }
+    };
+  }
+  if (el('canvasCloseBtn')) el('canvasCloseBtn').onclick = () => el('canvasDrawer')?.classList.add('hidden');
+  if (el('canvasCopyBtn')) {
+    el('canvasCopyBtn').onclick = async () => {
+      await navigator.clipboard.writeText(el('canvasEditor')?.value || '');
+      toast('Canvas içeriği panoya kopyalandı.');
+    };
+  }
+  if (el('canvasStudioBtn')) {
+    el('canvasStudioBtn').onclick = () => {
+      const content = el('canvasEditor')?.value || '';
+      const title = el('canvasTitle')?.textContent || 'EON Belgesi';
+      el('canvasDrawer')?.classList.add('hidden');
+      if (typeof openInStudio === 'function') openInStudio(content, title);
+    };
+  }
+  if (el('canvasPreviewBtn')) {
+    el('canvasPreviewBtn').onclick = () => {
+      const editor = el('canvasEditor');
+      const pane = el('canvasPreviewPane');
+      if (!editor || !pane) return;
+      const showingPreview = !pane.classList.contains('hidden');
+      if (showingPreview) {
+        pane.classList.add('hidden');
+        editor.classList.remove('hidden');
+        el('canvasPreviewBtn').textContent = 'Önizle';
+      } else {
+        pane.replaceChildren();
+        if (typeof markdown === 'function') markdown(pane, editor.value || '');
+        else pane.textContent = editor.value || '';
+        editor.classList.add('hidden');
+        pane.classList.remove('hidden');
+        el('canvasPreviewBtn').textContent = 'Düzenle';
+      }
+    };
+  }
+  const tabBar = el('settingsTabBar');
+  if (tabBar) {
+    tabBar.querySelectorAll('[data-stab]').forEach(btn => {
+      btn.onclick = () => {
+        const target = btn.dataset.stab;
+        tabBar.querySelectorAll('[data-stab]').forEach(b => b.classList.toggle('selected', b === btn));
+        document.querySelectorAll('#view-settings [data-scard]').forEach(card => {
+          card.classList.toggle('hidden', card.dataset.scard !== target);
+        });
+      };
+    });
+  }
+  if (el('wipeAllDataBtn')) {
+    el('wipeAllDataBtn').onclick = async () => {
+      if (!confirm('DİKKAT: Tüm sohbetler, hafıza kayıtları, belgeler ve şifreli Gemini API anahtarı kalıcı olarak silinecek. Onaylıyor musun?')) return;
+      try {
+        const fresh = await request('/api/runtime', {action:'wipe_all'});
+        renderState(fresh);
+        toast('Tüm yerel veriler ve API anahtarları güvenli biçimde silindi.');
+        showPage('chat');
       } catch (error) { toast(error.message); }
     };
   }
