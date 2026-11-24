@@ -183,7 +183,10 @@ class Release060Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.s.volume_action({"action": "mute", "muted": "invalid"})
         if os.name == "nt":
-            st = self.s.volume_action({"action": "get"})
+            # Hosted Windows runners may not expose a physical audio endpoint.
+            # Mock the device boundary so this test remains hardware-independent.
+            with patch.object(audio, "get_state", return_value={"supported": True, "level": 50, "muted": False}):
+                st = self.s.volume_action({"action": "get"})
             self.assertTrue(st["supported"])
             self.assertTrue(0 <= st["level"] <= 100)
 
